@@ -1,0 +1,118 @@
+{
+  "file_metadata": {
+    "file_name": "{file_name}",
+    "file_type": "VBP|FRM|CLS|BAS|RES|TXT|LOG|VBW",
+    "language": "VB6",
+    "purpose": "Brief description of the file's role"
+  },
+  "content_analysis": {
+    "project_components": {
+      "startup_object": "",
+      "references": [
+        {
+          "lib_name": "",
+          "guid": "",
+          "version": "",
+          "role": "",
+          "description": "what this component does"
+        }
+      ],
+      "included_files": [
+        {
+          "file_name": "",
+          "type": "",
+          "role": "",
+          "description": ""
+        }
+      ]
+    },
+    "forms": [
+      {
+        "form_name": "",
+        "description": "What this form does",
+        "ui_controls": [
+          {
+            "name": "",
+            "type": "",
+            "properties": {},
+            "description": "",
+            "events": [
+              {
+                "name": "",
+                "description": ""
+              }
+            ]
+          }
+        ],
+        "code_modules": [
+          {
+            "name": "",
+            "type": "Event|Sub|Function",
+            "description": "what this module does",
+            "parameters": [
+              {
+                "name": "",
+                "type": "",
+                "description": ""
+              }
+            ],
+            "variables_used": []
+          }
+        ]
+      }
+    ],
+    "classes": [
+      {
+        "class_name": "",
+        "description": "",
+        "properties": [
+          {
+            "name": "",
+            "type": "",
+            "access": "Public|Private",
+            "description": ""
+          }
+        ],
+        "methods": [
+          {
+            "name": "",
+            "description": "",
+            "parameters": [],
+            "return_type": ""
+          }
+        ]
+      }
+    ],
+    "modules": [
+      {
+        "module_name": "",
+        "description": "what this module does",
+        "declarations": [
+          {
+            "type": "API|Constant|Global",
+            "signature": "",
+            "role": "",
+            "description": "what this declaration does"
+          }
+        ],
+        "procedures": [
+          {
+            "name": "",
+            "type": "Sub|Function",
+            "description": "what this procedure does",
+            "parameters": []
+          }
+        ]
+      }
+    ],
+    "resources": [
+      {
+        "type": "String|Bitmap|Icon",
+        "id": "",
+        "value": "",
+        "role": "",
+        "description": ""
+      }
+    ]
+  }
+}

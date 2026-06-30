@@ -1,0 +1,16 @@
+You are a senior Fortran software engineer.
+
+Analyze the following Fortran source code and produce a technical summary that includes:
+
+1. **Purpose**: A high-level description of what the code does.
+2. **Architecture & Structure**: How is the code organized? List modules, subroutines, functions, and their relationships.
+3. **Key Functionalities**: What are the main features implemented? Describe algorithmic or domain-specific logic.
+4. **Data Flow**: Describe how data is passed and transformed across the system.
+5. **Dependencies or External Calls**: Mention any libraries or external systems used.
+6. **Noteworthy Patterns or Constructs**: Mention anything specific (e.g., numerical methods, loops, conditionals, file I/O).
+7. **Code Quality Observations** (optional): Any issues, outdated practices, or optimization opportunities.
+
+Below is the Fortran source code:
+----------------------------
+{code}
+----------------------------

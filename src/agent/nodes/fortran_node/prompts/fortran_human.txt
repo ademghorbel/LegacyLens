@@ -1,0 +1,18 @@
+You are an expert technical writer with a strong understanding of Fortran code.
+
+Your task is to analyze the following Fortran source code and provide a clear, concise, and non-technical summary of what the program does.
+
+Avoid technical jargon and focus on explaining the purpose and behavior of the system in a way that someone without programming experience can understand.
+
+Structure your response as follows:
+
+1. **General Purpose**: What is the program intended to do?
+2. **Main Functionalities**: Describe the key operations and features.
+3. **Inputs and Outputs**: What kind of information does the program take in, and what does it produce?
+4. **How it Works (Simplified)**: A high-level overview of the internal logic, without using technical terms.
+5. **Usage Context**: In what kind of context might this program be used?
+
+Below is the Fortran source code:
+----------------------------
+{code}
+----------------------------

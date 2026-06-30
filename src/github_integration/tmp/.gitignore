@@ -1,0 +1,12 @@
+# Ignorer tous les dossiers temporaires de clonage GitHub
+github_*
+
+# Ignorer les fichiers de marqueur de nettoyage
+.cleanup_marker
+
+# Ignorer les dossiers temporaires de nettoyage
+temp_cleanup_*
+temp_empty_*
+
+# Garder ce fichier .gitignore
+!.gitignore 

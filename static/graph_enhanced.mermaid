@@ -1,0 +1,43 @@
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
+flowchart TD
+    __start__([__start__])
+    orchestrator[orchestrator]
+    cobol_node[cobol_node]
+    vb6_node[vb6_node] 
+    fortran_node[fortran_node]
+    generic_node[generic_node]
+    checker_node[checker_node]
+    __end__([__end__])
+    
+    __start__ --> orchestrator
+    
+    %% Connexions conditionnelles de l'orchestrateur
+    orchestrator -->|"files_to_process_with_cobol"| cobol_node
+    orchestrator -->|"files_to_process_with_vb6"| vb6_node
+    orchestrator -->|"files_to_process_with_fortran"| fortran_node
+    orchestrator -->|"files_to_process_with_generic"| generic_node
+    orchestrator -->|"no files found"| __end__
+    
+    %% Connexions vers le checker
+    cobol_node --> checker_node
+    vb6_node --> checker_node
+    fortran_node --> checker_node
+    generic_node --> checker_node
+    
+    %% Connexions conditionnelles du checker
+    checker_node -->|"processing_complete"| __end__
+    checker_node -->|"more files to process"| cobol_node
+    checker_node -->|"more files to process"| vb6_node
+    checker_node -->|"more files to process"| fortran_node
+    checker_node -->|"more files to process"| generic_node
+    
+    %% Styles
+    classDef startEnd fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef orchestrator fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef processor fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef checker fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    
+    class __start__,__end__ startEnd
+    class orchestrator orchestrator
+    class cobol_node,vb6_node,fortran_node,generic_node processor
+    class checker_node checker
