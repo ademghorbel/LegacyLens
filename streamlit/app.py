@@ -3,8 +3,10 @@ LegacyLens — Streamlit UI
 Multi-agent legacy system analyser with interactive chat.
 """
 
-import streamlit as st
 import os
+os.environ.setdefault("PYTHONUTF8", "1")  # fix emoji print on Windows CP1252
+
+import streamlit as st
 import sys
 import asyncio
 import json

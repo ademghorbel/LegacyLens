@@ -7,4 +7,5 @@ if not exist .venv (
     uv pip install openai --python .venv\Scripts\python.exe
 )
 set PYTHONPATH=src
+set PYTHONUTF8=1
 .venv\Scripts\streamlit.exe run streamlit/app.py
