@@ -121,7 +121,7 @@ class GitHubAnalyzer:
         
         # Exécuter l'analyse
         if verbose_mode:
-            print(f"🔍 Analyse du projet: {project_path}")
+            print(f"[analyze] {project_path}")
         
         result = await graph.ainvoke(initial_state, config)
         
@@ -132,12 +132,12 @@ class GitHubAnalyzer:
         try:
             self.cloner.cleanup()
         except Exception as e:
-            print(f"⚠️ Erreur lors du nettoyage standard: {e}")
+            print(f"[warn] cleanup error: {e}")
             # Essayer un nettoyage forcé
             try:
                 self.cloner.force_cleanup_all()
             except Exception as e2:
-                print(f"❌ Échec du nettoyage forcé: {e2}")
+                print(f"[error] force cleanup failed: {e2}")
     
     def __enter__(self):
         """Context manager entry."""

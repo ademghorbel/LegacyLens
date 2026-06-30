@@ -108,8 +108,8 @@ class GitHubCloner:
             # Construire l'URL de clonage
             clone_url = self.build_clone_url(owner, repo)
             
-            print(f"🔄 Clonage du dépôt {owner}/{repo} (branche: {target_branch})...")
-            print(f"📁 Dossier temporaire: {temp_dir}")
+            print(f"[clone] {owner}/{repo} (branch: {target_branch})")
+            print(f"[tmp] {temp_dir}")
             
             # Cloner le dépôt
             repo_path = temp_dir / repo
@@ -125,7 +125,7 @@ class GitHubCloner:
             # Fermer le repo pour libérer les handles de fichiers
             git_repo.close()
             
-            print(f"✅ Dépôt cloné avec succès dans: {repo_path}")
+            print(f"[ok] cloned to: {repo_path}")
             return str(repo_path)
             
         except git.exc.GitCommandError as e:
@@ -153,9 +153,9 @@ class GitHubCloner:
                 if os.path.exists(temp_dir):
                     # Essayer de supprimer avec gestion d'erreurs améliorée
                     self._safe_remove_directory(temp_dir)
-                    print(f"🧹 Répertoire temporaire supprimé: {temp_dir}")
+                    print(f"[cleanup] removed: {temp_dir}")
             except Exception as e:
-                print(f"⚠️ Erreur lors de la suppression de {temp_dir}: {e}")
+                print(f"[warn] could not remove {temp_dir}: {e}")
                 # Marquer pour suppression ultérieure
                 self._mark_for_later_cleanup(temp_dir)
         
@@ -179,36 +179,36 @@ class GitHubCloner:
                             text=True
                         )
                         if result.returncode == 0:
-                            print(f"  ✅ Suppression réussie avec rmdir: {directory}")
+                            print(f"  [ok] rmdir: {directory}")
                             return
                         else:
-                            print(f"  ⚠️ rmdir a échoué: {result.stderr}")
+                            print(f"  [warn] rmdir failed: {result.stderr}")
                     except Exception as e:
-                        print(f"  ⚠️ Erreur avec rmdir: {e}")
+                        print(f"  [warn] rmdir error: {e}")
                 
                 # Méthode standard avec shutil.rmtree
                 shutil.rmtree(directory, ignore_errors=True)
                 
                 # Vérifier si le dossier a été supprimé
                 if not os.path.exists(directory):
-                    print(f"  ✅ Suppression réussie avec shutil: {directory}")
+                    print(f"  [ok] shutil removed: {directory}")
                     return
                 else:
-                    print(f"  ⚠️ Le dossier existe encore après shutil.rmtree: {directory}")
+                    print(f"  [warn] dir still exists after shutil: {directory}")
                 
             except PermissionError as e:
-                if attempt < 4:  # Pas la dernière tentative
-                    print(f"  ⏳ Tentative {attempt + 1}/5 échouée (PermissionError), nouvelle tentative dans 2 secondes...")
+                if attempt < 4:
+                    print(f"  [retry {attempt+1}/5] PermissionError, waiting 2s...")
                     time.sleep(2)
                 else:
-                    print(f"  ❌ Échec final après 5 tentatives: {e}")
+                    print(f"  [error] failed after 5 attempts: {e}")
                     raise
             except Exception as e:
                 if attempt < 4:
-                    print(f"  ⏳ Tentative {attempt + 1}/5 échouée: {e}")
+                    print(f"  [retry {attempt+1}/5] {e}")
                     time.sleep(2)
                 else:
-                    print(f"  ❌ Échec final après 5 tentatives: {e}")
+                    print(f"  [error] failed after 5 attempts: {e}")
                     raise
     
     def _mark_for_later_cleanup(self, directory: str):
@@ -218,22 +218,22 @@ class GitHubCloner:
             marker_file = os.path.join(directory, ".cleanup_marker")
             with open(marker_file, 'w') as f:
                 f.write(f"Marked for cleanup at {time.time()}")
-            print(f"  📝 Marqué pour suppression ultérieure: {directory}")
+            print(f"  [mark] marked for later cleanup: {directory}")
         except Exception as e:
-            print(f"  ❌ Impossible de marquer pour suppression ultérieure: {e}")
+            print(f"  [error] could not mark for cleanup: {e}")
     
     def force_cleanup_all(self):
         """Forcer le nettoyage de tous les répertoires temporaires."""
-        print("🧹 Forçage du nettoyage de tous les répertoires temporaires...")
+        print("[cleanup] forcing removal of all temp dirs...")
         
         for temp_dir in self.temp_dirs[:]:  # Copie de la liste
             try:
                 if os.path.exists(temp_dir):
                     # Essayer une suppression plus agressive
                     self._force_remove_directory(temp_dir)
-                    print(f"✅ Répertoire supprimé avec force: {temp_dir}")
+                    print(f"[ok] force-removed: {temp_dir}")
             except Exception as e:
-                print(f"❌ Impossible de supprimer {temp_dir}: {e}")
+                print(f"[error] could not remove {temp_dir}: {e}")
         
         self.temp_dirs.clear()
     
@@ -262,7 +262,7 @@ class GitHubCloner:
                 return
                 
             except Exception as e:
-                print(f"  ⚠️ robocopy a échoué: {e}")
+                print(f"  [warn] robocopy failed: {e}")
         
         # Méthode de dernier recours - suppression récursive manuelle
         try:
@@ -274,7 +274,7 @@ class GitHubCloner:
                         os.chmod(file_path, 0o777)
                         os.unlink(file_path)
                     except Exception as e:
-                        print(f"    ⚠️ Impossible de supprimer le fichier {file_path}: {e}")
+                        print(f"    [warn] could not delete file {file_path}: {e}")
                 
                 for name in dirs:
                     try:
@@ -283,17 +283,17 @@ class GitHubCloner:
                         os.chmod(dir_path, 0o777)
                         os.rmdir(dir_path)
                     except Exception as e:
-                        print(f"    ⚠️ Impossible de supprimer le dossier {dir_path}: {e}")
+                        print(f"    [warn] could not delete dir {dir_path}: {e}")
             
             # Supprimer le répertoire racine
             try:
                 os.chmod(directory, 0o777)
                 os.rmdir(directory)
             except Exception as e:
-                print(f"    ⚠️ Impossible de supprimer le répertoire racine {directory}: {e}")
+                print(f"    [warn] could not delete root dir {directory}: {e}")
                 
         except Exception as e:
-            print(f"  ❌ Échec de la suppression forcée: {e}")
+            print(f"  [error] force removal failed: {e}")
     
     def __enter__(self):
         """Context manager entry."""
