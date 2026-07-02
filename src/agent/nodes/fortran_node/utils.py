@@ -2,7 +2,6 @@
 
 from pathlib import Path
 from typing import Dict, Optional
-import openai
 import re
 import os
 
@@ -40,17 +39,21 @@ def clean_llm_output(summary: str) -> str:
     return "\n".join(cleaned).strip()
 
 
-def call_openrouter(prompt: str, config: dict) -> str:
-    openai.api_key = os.getenv(config.get("api_key_env", "OPENROUTER_API_KEY"))
-    openai.api_base = config.get("api_base", "https://openrouter.ai/api/v1")
+def call_llm(prompt: str, system: str = "You are a helpful assistant that describes the purpose of Fortran code.",
+             temperature: float = 0.3) -> str:
+    """Single LLM entry point for the Fortran node.
 
-    response = openai.ChatCompletion.create(
-        model=config["model"],  # ✅ Correct usage
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant that describes the purpose of Fortran code."},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=config.get("temperature", 0.3),
-        max_tokens=config.get("max_tokens", 500),
-    )
-    return response["choices"][0]["message"]["content"].strip()
+    ponytail: original code used OpenRouter via the legacy openai.ChatCompletion API
+    (removed in openai>=1.0). The rest of the pipeline runs on Gemini — use the same.
+    """
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    from langchain_core.messages import SystemMessage, HumanMessage
+
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=temperature)
+    response = llm.invoke([SystemMessage(content=system), HumanMessage(content=prompt)])
+    return response.content.strip()
+
+
+def call_openrouter(prompt: str, config: dict) -> str:
+    """Legacy name kept for existing callers — now routed through Gemini."""
+    return call_llm(prompt, temperature=config.get("temperature", 0.3))

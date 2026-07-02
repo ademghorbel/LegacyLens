@@ -3,9 +3,13 @@ LegacyLens — Streamlit UI
 Multi-agent legacy system analyser with interactive chat.
 """
 
-import os
-os.environ.setdefault("PYTHONUTF8", "1")  # fix emoji print on Windows CP1252
+import sys
+# ponytail: pipeline code prints emojis; Windows console is CP1252 — force UTF-8 once here
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
+import os
 import streamlit as st
 import sys
 import asyncio
@@ -74,7 +78,7 @@ def chat_with_context(prompt: str, context: str, history: List[Dict]) -> str:
     from langchain_google_genai import ChatGoogleGenerativeAI
     from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.3)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
 
     system = SystemMessage(content=(
         "You are an expert software architect specialising in legacy system modernisation. "

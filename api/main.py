@@ -5,6 +5,10 @@ Run: uvicorn api.main:app --reload
 """
 
 import sys
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -108,7 +112,7 @@ async def chat(req: ChatRequest):
             lines.append(f"  - {f}")
     context = "\n".join(lines) or "No analysis data."
 
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.3)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
     messages = [SystemMessage(content=(
         "You are an expert software architect specialising in legacy system modernisation. "
         f"Codebase analysis:\n\n{context}\n\nBe concise and actionable."

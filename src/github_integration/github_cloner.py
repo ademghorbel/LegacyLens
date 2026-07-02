@@ -58,7 +58,8 @@ class GitHubCloner:
             if match:
                 owner = match.group(1)
                 repo = match.group(2)
-                branch = match.group(3) if len(match.groups()) > 2 else 'main'
+                # ponytail: None = let git pick the repo's real default branch (main/master/other)
+                branch = match.group(3) if len(match.groups()) > 2 else None
                 return owner, repo, branch
         
         raise ValueError(f"URL GitHub invalide: {url}")
@@ -108,19 +109,17 @@ class GitHubCloner:
             # Construire l'URL de clonage
             clone_url = self.build_clone_url(owner, repo)
             
-            print(f"[clone] {owner}/{repo} (branch: {target_branch})")
+            print(f"[clone] {owner}/{repo} (branch: {target_branch or 'default'})")
             print(f"[tmp] {temp_dir}")
-            
+
             # Cloner le dépôt
             repo_path = temp_dir / repo
-            
-            # Fermer explicitement le repo Git après clonage pour libérer les handles
-            git_repo = git.Repo.clone_from(
-                clone_url,
-                repo_path,
-                branch=target_branch,
-                depth=1  # Clone superficiel pour économiser l'espace
-            )
+
+            # ponytail: omit branch kwarg when unset — git resolves the default branch itself
+            clone_kwargs = {"depth": 1}
+            if target_branch:
+                clone_kwargs["branch"] = target_branch
+            git_repo = git.Repo.clone_from(clone_url, repo_path, **clone_kwargs)
             
             # Fermer le repo pour libérer les handles de fichiers
             git_repo.close()

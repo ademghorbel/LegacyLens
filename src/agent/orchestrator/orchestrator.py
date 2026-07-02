@@ -105,7 +105,7 @@ async def orchestrator_node(state: State, config: RunnableConfig) -> Dict[str, A
     # Initialize Gemini 2.5 Flash
     try:
         llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",
+            model="gemini-2.5-flash",
             temperature=0.1,
             google_api_key=os.getenv("GOOGLE_API_KEY")
         )
@@ -248,17 +248,28 @@ Détermine le langage, le framework (si applicable) et le nœud de traitement ap
                 print(f"  📄 {filename} → GENERIC_NODE ({language})")
                 
         except Exception as e:
-            print(f"  ❌ Error analyzing {filename}: {e}")
-            # Fallback routing
+            print(f"  [warn] LLM failed for {filename}, using extension fallback: {e}")
+            # ponytail: extension-based routing already exists — use it instead of dumping to generic
+            fb = fallback_analysis(file_path, file_ext)
+            language = fb["language"]
+            target_node = fb["target_node"]
+            detected_languages.add(language)
             file_info = {
                 "file_path": file_path,
                 "filename": filename,
-                "language": "unknown",
+                "language": language,
                 "framework": None,
-                "target_node": "generic_node",
+                "target_node": target_node,
                 "error": str(e)
             }
-            files_generic.append(file_info)
+            if target_node == "cobol_node":
+                files_cobol.append(file_info)
+            elif target_node == "vb6_node":
+                files_vb6.append(file_info)
+            elif target_node == "fortran_node":
+                files_fortran.append(file_info)
+            else:
+                files_generic.append(file_info)
     
     # Summary
     print(f"\n📊 Analysis Summary:")
