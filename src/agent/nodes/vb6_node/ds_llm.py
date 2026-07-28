@@ -81,47 +81,6 @@ def analyze_vb6_file(file_path):
         return None
     
 
-# Function to interact with the LLM
-def deepseek_llm_query(prompt, code_content):
-    response = requests.post(
-        url="https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": "Bearer REDACTED_OPENROUTER_KEY",
-            "Content-Type": "application/json",
-        },
-        data=json.dumps({
-            "model": "deepseek/deepseek-chat-v3-0324",
-            "messages": [
-                {"role": "user", "content": prompt.format(code=code_content)}
-            ],
-        })
-    )
-
-    if response.status_code == 200:
-        return response.json()
-    else:
-        raise Exception(f"LLM query failed: {response.status_code} {response.text}")
-    
-def claude_llm_query(prompt, code_content):
-    response = requests.post(
-        url="https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": "Bearer REDACTED_OPENROUTER_KEY",
-            "Content-Type": "application/json",
-        },
-        data=json.dumps({
-            "model": "anthropic/claude-sonnet-4",
-            "messages": [
-                {"role": "user", "content": prompt.format(code=code_content)}
-            ],
-        })
-    )
-
-    if response.status_code == 200:
-        return response.json()
-    else:
-        raise Exception(f"LLM query failed: {response.status_code} {response.text}")
-
 def read_vb6_file(file_path):
     """
     Lit le contenu d'un fichier VB6
