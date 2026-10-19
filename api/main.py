@@ -50,24 +50,31 @@ class ChatRequest(BaseModel):
 
 @app.post("/analyse")
 async def analyse(req: AnalyseRequest):
-    if not req.project_path and not req.github_url:
-        raise HTTPException(400, "Provide project_path or github_url")
+    if bool(req.project_path) == bool(req.github_url):
+        raise HTTPException(400, "Provide exactly one of project_path or github_url")
+    if req.project_path and not Path(req.project_path).is_dir():
+        raise HTTPException(400, f"project_path not found: {req.project_path}")
 
     if req.github_url:
         from github_integration.github_analyzer import GitHubAnalyzer
         analyzer = GitHubAnalyzer(os.getenv("GITHUB_TOKEN"))
-        result = await analyzer.analyze_github_repository(
-            github_url=req.github_url,
-            branch=req.branch,
-            max_files=req.max_files,
-            include_tests=req.include_tests,
-            verbose_mode=False,
-        )
         try:
-            analyzer.cleanup()
-        except Exception:
-            pass
-        return result
+            return await analyzer.analyze_github_repository(
+                github_url=req.github_url,
+                branch=req.branch,
+                max_files=req.max_files,
+                include_tests=req.include_tests,
+                verbose_mode=False,
+            )
+        except ValueError as e:  # bad URL, repo not found, no access
+            raise HTTPException(400, f"Could not clone repository: {e}")
+        except Exception as e:
+            raise HTTPException(502, f"GitHub analysis failed: {type(e).__name__}: {str(e)[:300]}")
+        finally:
+            try:
+                analyzer.cleanup()
+            except Exception:
+                pass
 
     from agent.graph import create_graph, State
     graph = create_graph()
@@ -97,8 +104,8 @@ async def analyse(req: AnalyseRequest):
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    from langchain_google_genai import ChatGoogleGenerativeAI
     from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+    from agent.llm import ainvoke, classify_error, get_llm
 
     # Build context inline (same logic as Streamlit helper)
     results = req.analysis_results
@@ -112,7 +119,7 @@ async def chat(req: ChatRequest):
             lines.append(f"  - {f}")
     context = "\n".join(lines) or "No analysis data."
 
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
+    llm = get_llm(temperature=0.3, timeout=90)
     messages = [SystemMessage(content=(
         "You are an expert software architect specialising in legacy system modernisation. "
         f"Codebase analysis:\n\n{context}\n\nBe concise and actionable."
@@ -124,8 +131,11 @@ async def chat(req: ChatRequest):
             messages.append(AIMessage(content=m.content))
     messages.append(HumanMessage(content=req.message))
 
-    response = llm.invoke(messages)
-    return {"reply": response.content}
+    try:
+        return {"reply": await ainvoke(llm, messages)}
+    except Exception as e:
+        kind, status = classify_error(e)
+        raise HTTPException(status_code=status, detail=f"LLM {kind}: {type(e).__name__}: {str(e)[:300]}")
 
 
 @app.get("/health")

@@ -46,12 +46,11 @@ def call_llm(prompt: str, system: str = "You are a helpful assistant that descri
     ponytail: original code used OpenRouter via the legacy openai.ChatCompletion API
     (removed in openai>=1.0). The rest of the pipeline runs on Gemini — use the same.
     """
-    from langchain_google_genai import ChatGoogleGenerativeAI
     from langchain_core.messages import SystemMessage, HumanMessage
+    from ...llm import get_llm, invoke
 
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=temperature)
-    response = llm.invoke([SystemMessage(content=system), HumanMessage(content=prompt)])
-    return response.content.strip()
+    llm = get_llm(temperature=temperature)
+    return invoke(llm, [SystemMessage(content=system), HumanMessage(content=prompt)])
 
 
 def call_openrouter(prompt: str, config: dict) -> str:

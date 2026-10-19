@@ -31,30 +31,45 @@ uvicorn api.main:app --reload
 ## Architecture
 
 ```
-Input (local path / GitHub URL / ZIP)
+Input (local path / GitHub URL)
        │
        ▼
-  Orchestrator (Gemini 2.5 Flash)
-  ├── detects languages & frameworks
-  └── routes files to:
+  Orchestrator
+  ├── routes each file by extension (exact, no LLM call)
+  └── one LLM call per project to detect frameworks
+       │
        ├── COBOL node
        ├── VB6 node      → functionality extraction
        ├── Fortran node  → parser + human + tech summary
-       └── Generic node
+       └── Generic node  → structured analysis: role, layer, classes,
+              │            functions, dependencies, design patterns
+              ▼
+       Checker (loop until every file is processed)
               │
               ▼
-       Checker (loop until all files processed)
-              │
+       Module aggregation → groups all analyses into business modules
+              │             (tech stack, endpoints, entities; RFP format)
               ▼
-       Results + Chat (ask Gemini about the analysis)
+       Results + Chat (ask about the analysis)
 ```
+
+## Reliability
+
+Every LLM call goes through `src/agent/llm.py`:
+
+- **Timeouts** on every request, so a stuck call cannot freeze the pipeline.
+- **Retries with exponential backoff** on 429 / 5xx / timeouts (4 attempts, 4s → 8s → 16s), which covers a per-minute quota window.
+- **Shared rate limiter** across all nodes (`LLM_RPM`, default 8/min, under the free-tier limit).
+- **Daily-quota fallback.** Free-tier quotas are per model (20 requests/day on `gemini-3.5-flash`). When one model runs out, calls move to the next model in `GEMINI_FALLBACK_MODELS`; when all are out, the remaining calls fail at once with a clear reason instead of each retrying.
+- **One failing file never stops the run.** It is marked `error` with the cause, and the aggregation is built from the files that worked.
+- The API maps failures to proper status codes: quota → 429, timeout → 504, bad key → 401.
 
 ## Stack
 
 | Layer | Tech |
 |-------|------|
 | Orchestration | LangGraph |
-| LLM | Google Gemini 2.0/2.5 Flash |
+| LLM | Google Gemini (3.5 Flash, Flash-Lite fallbacks), via LangChain |
 | UI | Streamlit |
 | API | FastAPI |
 | GitHub | GitPython |
@@ -69,6 +84,12 @@ Input (local path / GitHub URL / ZIP)
 | `LANGCHAIN_API_KEY` | Optional | LangSmith tracing |
 | `LANGCHAIN_TRACING_V2` | Optional | Enable LangSmith tracing |
 | `LANGCHAIN_PROJECT` | Optional | LangSmith project name |
+| `GEMINI_MODEL` | Optional | Primary model (default `gemini-3.5-flash`) |
+| `GEMINI_FALLBACK_MODELS` | Optional | Comma-separated models used when the primary hits its daily quota |
+| `LLM_TIMEOUT` | Optional | Seconds per request (default 120) |
+| `LLM_MAX_ATTEMPTS` | Optional | Tries per request on 429 / 5xx / timeout (default 4) |
+| `LLM_RETRY_DELAY` | Optional | First backoff in seconds (default 4) |
+| `LLM_RPM` | Optional | Requests per minute across all nodes (default 8) |
 
 Copy `.env.example` to `.env` and fill in your own keys — never commit `.env`.
 
@@ -78,10 +99,12 @@ Copy `.env.example` to `.env` and fill in your own keys — never commit `.env`.
 .
 ├── api/main.py              # FastAPI app (/analyse, /chat, /health)
 ├── streamlit/app.py         # Streamlit UI entrypoint
-├── src/agent/               # LangGraph pipeline: orchestrator, checker, language nodes
+├── src/agent/               # LangGraph pipeline: orchestrator, language nodes, checker, aggregation
+├── src/agent/llm.py         # Shared Gemini client: timeouts, retries, rate limit, quota fallback
 ├── src/agents/               # Standalone agent helpers (language identifier)
 ├── src/github_integration/  # Clone + analyse a GitHub repo by URL
-├── examples/demo_project/   # Sample COBOL/VB6/Fortran files for a quick test run
+├── examples/demo_project/   # Small VB6 / Fortran / Python sample
+├── examples/ecommerce_project/  # Larger Python + React sample for the structured analyser
 ├── outputs/                 # Generated analysis artifacts (gitignored)
 └── static/                  # Architecture diagrams (mermaid + png)
 ```
@@ -125,6 +148,17 @@ uvicorn api.main:app --reload
 curl -X POST localhost:8000/analyse -H "Content-Type: application/json" \
   -d '{"project_path": "examples/demo_project", "max_files": 10}'
 ```
+
+## Tests
+
+```bash
+pip install -e ".[dev]"
+python -m pytest -q
+```
+
+The suite runs offline: a local fake Gemini server (`tests/fake_gemini.py`) stands in for the API, so the real google-genai SDK retry, backoff and timeout code is exercised without a key or quota. It covers retries, backoff timing, timeouts (sync and async), the daily-quota fallback chain, rate limiting, full pipeline runs on both example projects, partial failures, and the API error codes.
+
+To run the real pipeline with your key: `python scripts/run_pipeline.py examples/ecommerce_project`.
 
 ## License
 

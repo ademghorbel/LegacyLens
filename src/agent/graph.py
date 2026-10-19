@@ -67,6 +67,13 @@ class State:
     processing_complete: bool = False
     output_vb6_agent: Dict[str, Any] = field(default_factory=dict)
 
+    # Structured per-file analyses from the generic analyser
+    structured_analyses: Annotated[List[Dict[str, Any]], operator.add] = field(default_factory=list)
+
+    # Business modules (RFP format) from the aggregation node
+    modules: List[Dict[str, Any]] = field(default_factory=list)
+    aggregation_status: str = ""
+
 async def call_model(state: State, config: RunnableConfig) -> Dict[str, Any]:
     """Legacy function kept for compatibility. Use the orchestrator instead."""
     return {"analysis_complete": False}
@@ -98,6 +105,7 @@ from .nodes.cobol_node.cobol_node import cobol_node
 from .nodes.vb6_node.vb6_node import vb6_node
 from .nodes.fortran_node.fortran_node import fortran_node
 from .nodes.generic_node.generic_node import generic_node
+from .nodes.module_aggregation_node.aggregation_node import aggregation_node
 
 
 # Define the graph
@@ -114,6 +122,7 @@ def create_graph():
         .add_node("fortran_node", fortran_node)
         .add_node("generic_node", generic_node)
         .add_node("checker_node", checker_node)
+        .add_node("aggregation_node", aggregation_node)
         .add_edge("__start__", "orchestrator")
         .add_conditional_edges("orchestrator", route_to_processors)
         .add_edge("cobol_node", "checker_node")
@@ -121,6 +130,7 @@ def create_graph():
         .add_edge("fortran_node", "checker_node")
         .add_edge("generic_node", "checker_node")
         .add_conditional_edges("checker_node", route_from_checker)
+        .add_edge("aggregation_node", "__end__")
         .compile(name="Multi-Node Analysis Pipeline")
     )
 

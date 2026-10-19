@@ -75,10 +75,10 @@ def build_chat_context(results: Dict[str, Any]) -> str:
 
 def chat_with_context(prompt: str, context: str, history: List[Dict]) -> str:
     """Call Gemini with codebase context + conversation history."""
-    from langchain_google_genai import ChatGoogleGenerativeAI
     from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+    from agent.llm import get_llm, invoke
 
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
+    llm = get_llm(temperature=0.3, timeout=90)
 
     system = SystemMessage(content=(
         "You are an expert software architect specialising in legacy system modernisation. "
@@ -97,10 +97,17 @@ def chat_with_context(prompt: str, context: str, history: List[Dict]) -> str:
     messages.append(HumanMessage(content=prompt))
 
     try:
-        response = llm.invoke(messages)
-        return response.content
+        return invoke(llm, messages)
     except Exception as e:
-        return f"Error calling LLM: {e}"
+        from agent.llm import classify_error
+        kind, _ = classify_error(e)
+        hint = {
+            "daily_quota": "The Gemini daily quota is used up. Try again tomorrow or set another GOOGLE_API_KEY.",
+            "rate_limited": "Gemini is rate-limiting requests. Wait a minute and ask again.",
+            "timeout": "Gemini took too long to answer. Ask again, or raise LLM_TIMEOUT in .env.",
+            "auth": "Gemini rejected the API key. Check GOOGLE_API_KEY in .env.",
+        }.get(kind, "The LLM call failed.")
+        return f"⚠️ {hint}\n\n`{type(e).__name__}: {str(e)[:200]}`"
 
 
 # ─── Main UI ──────────────────────────────────────────────────────────────────
