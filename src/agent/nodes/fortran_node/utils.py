@@ -44,7 +44,7 @@ def call_llm(prompt: str, system: str = "You are a helpful assistant that descri
     """Single LLM entry point for the Fortran node.
 
     ponytail: original code used OpenRouter via the legacy openai.ChatCompletion API
-    (removed in openai>=1.0). The rest of the pipeline runs on Gemini — use the same.
+    (removed in openai>=1.0). The rest of the pipeline runs on Gemini, so use the same.
     """
     from langchain_core.messages import SystemMessage, HumanMessage
     from ...llm import get_llm, invoke
@@ -54,5 +54,5 @@ def call_llm(prompt: str, system: str = "You are a helpful assistant that descri
 
 
 def call_openrouter(prompt: str, config: dict) -> str:
-    """Legacy name kept for existing callers — now routed through Gemini."""
+    """Legacy name kept for existing callers, now routed through Gemini."""
     return call_llm(prompt, temperature=config.get("temperature", 0.3))

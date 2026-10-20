@@ -115,7 +115,7 @@ class GitHubCloner:
             # Cloner le dépôt
             repo_path = temp_dir / repo
 
-            # ponytail: omit branch kwarg when unset — git resolves the default branch itself
+            # ponytail: omit branch kwarg when unset; git resolves the default branch itself
             clone_kwargs = {"depth": 1}
             if target_branch:
                 clone_kwargs["branch"] = target_branch

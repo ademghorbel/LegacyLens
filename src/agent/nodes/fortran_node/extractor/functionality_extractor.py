@@ -98,7 +98,7 @@ def extract_subroutines(parsed: Dict) -> List[Dict]:
         functionalities.append({
             "type": "subroutine",
             "name": name,
-            "description": f"Subroutine '{name}' — {summary}",
+            "description": f"Subroutine '{name}': {summary}",
             "parameters": parameters
         })
     return functionalities
@@ -129,7 +129,7 @@ def extract_functions(parsed: Dict) -> List[Dict]:
         functionalities.append({
             "type": "function",
             "name": name,
-            "description": f"Function '{name}' — {summary}",
+            "description": f"Function '{name}': {summary}",
             "parameters": parameters,
             "return": {
                 "name": return_var,

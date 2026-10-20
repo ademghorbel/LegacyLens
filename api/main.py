@@ -1,5 +1,5 @@
 """
-LegacyLens API — FastAPI wrapper over the LangGraph pipeline.
+LegacyLens API: FastAPI wrapper over the LangGraph pipeline.
 
 Run: uvicorn api.main:app --reload
 """

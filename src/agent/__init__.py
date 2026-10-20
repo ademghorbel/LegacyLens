@@ -3,7 +3,7 @@
 This module defines a custom graph.
 """
 
-# ponytail: lazy import — graph instantiation happens in graph.py, not here
+# ponytail: lazy import; graph instantiation happens in graph.py, not here
 # importing at module level would build the graph before .env is loaded
 __all__ = ["graph", "create_graph", "State"]
 
