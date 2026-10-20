@@ -1,0 +1,218 @@
+/* LegacyLens clay theme.
+   Colours, fonts and the base radius come from .streamlit/config.toml.
+   This file adds what the theme can't: layered shadows, shapes and press/lift motion. */
+
+:root {
+  --clay-canvas: #F4F1FA;
+  --clay-surface: rgba(255, 255, 255, 0.72);
+  --clay-recess: #EFEBF5;
+  --clay-text: #332F3A;
+  --clay-muted: #635F69;
+  --clay-violet: #7C3AED;
+  --clay-violet-light: #A78BFA;
+  --clay-pink: #DB2777;
+
+  --r-xl: 32px;   /* cards */
+  --r-lg: 24px;   /* nested surfaces */
+  --r-md: 20px;   /* buttons, inputs */
+
+  --shadow-card:
+    16px 16px 32px rgba(160, 150, 180, 0.2),
+    -10px -10px 24px rgba(255, 255, 255, 0.9),
+    inset 6px 6px 12px rgba(139, 92, 246, 0.03),
+    inset -6px -6px 12px rgba(255, 255, 255, 1);
+  --shadow-card-hover:
+    20px 24px 40px rgba(160, 150, 180, 0.28),
+    -10px -10px 24px rgba(255, 255, 255, 0.95),
+    inset 6px 6px 12px rgba(139, 92, 246, 0.03),
+    inset -6px -6px 12px rgba(255, 255, 255, 1);
+  --shadow-button:
+    12px 12px 24px rgba(139, 92, 246, 0.3),
+    -8px -8px 16px rgba(255, 255, 255, 0.4),
+    inset 4px 4px 8px rgba(255, 255, 255, 0.4),
+    inset -4px -4px 8px rgba(0, 0, 0, 0.1);
+  --shadow-soft-button:
+    8px 8px 16px rgba(160, 150, 180, 0.25),
+    -6px -6px 14px rgba(255, 255, 255, 0.9),
+    inset 3px 3px 6px rgba(255, 255, 255, 0.6),
+    inset -3px -3px 6px rgba(160, 150, 180, 0.12);
+  --shadow-pressed:
+    inset 10px 10px 20px #D9D4E3,
+    inset -10px -10px 20px #FFFFFF;
+
+  --ease-bounce: cubic-bezier(.34, 1.56, .64, 1);
+}
+
+/* ── Canvas: soft colour blobs behind everything ───────────────────────── */
+[data-testid="stAppViewContainer"] {
+  background:
+    radial-gradient(60vh 60vh at 8% 4%, rgba(139, 92, 246, 0.13), transparent 70%),
+    radial-gradient(55vh 55vh at 96% 28%, rgba(236, 72, 153, 0.10), transparent 70%),
+    radial-gradient(60vh 60vh at 30% 100%, rgba(14, 165, 233, 0.10), transparent 70%),
+    var(--clay-canvas);
+  background-attachment: fixed;
+}
+[data-testid="stHeader"] { background: transparent; }
+[data-testid="stSidebar"] {
+  background: var(--clay-surface);
+  backdrop-filter: blur(24px);
+  border-radius: 0 var(--r-xl) var(--r-xl) 0;
+  box-shadow: var(--shadow-card);
+}
+
+/* Fixed width, folds like a chat app's side panel: no drag-resize, toggle always visible. */
+[data-testid="stSidebar"][aria-expanded="true"] {
+  width: 300px !important;
+  min-width: 300px !important;
+  max-width: 300px !important;
+}
+[data-testid="stSidebarResizeHandle"] { display: none !important; }
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stExpandSidebarButton"] {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+[data-testid="stSidebarCollapseButton"] button,
+[data-testid="stExpandSidebarButton"] {
+  border-radius: 14px;
+  color: var(--clay-muted);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+[data-testid="stSidebarCollapseButton"] button:hover,
+[data-testid="stExpandSidebarButton"]:hover {
+  background: var(--clay-recess);
+  color: var(--clay-violet);
+}
+
+/* ── Typography touches ────────────────────────────────────────────────── */
+h1 { letter-spacing: -0.035em; line-height: 1.1; }
+h2, h3 { letter-spacing: -0.02em; }
+[data-testid="stCaptionContainer"], .stCaption { color: var(--clay-muted); }
+.ll-eyebrow {
+  display: inline-block; margin: 0 0 .4rem; padding: .3rem .8rem;
+  font-size: .7rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--clay-violet); background: rgba(124, 58, 237, 0.08); border-radius: 999px;
+}
+
+/* ── Buttons: bulge out, lift on hover, squish on press ───────────────── */
+[data-testid^="stBaseButton-"] {
+  min-height: 2.9rem; padding: 0 1.4rem;
+  border: 0 !important; border-radius: var(--r-md);
+  font-weight: 600; letter-spacing: .01em;
+  transition: transform .2s var(--ease-bounce), box-shadow .2s ease, background .2s ease;
+}
+[data-testid="stBaseButton-primary"] {
+  background: linear-gradient(135deg, var(--clay-violet-light), var(--clay-violet));
+  color: #fff; box-shadow: var(--shadow-button);
+}
+[data-testid="stBaseButton-secondary"] {
+  background: #fff; color: var(--clay-text); box-shadow: var(--shadow-soft-button);
+}
+[data-testid^="stBaseButton-"]:hover { transform: translateY(-3px); }
+[data-testid="stBaseButton-secondary"]:hover { color: var(--clay-violet); }
+[data-testid^="stBaseButton-"]:active { transform: scale(.94); box-shadow: var(--shadow-pressed); }
+[data-testid^="stBaseButton-"]:focus-visible { outline: 4px solid rgba(124, 58, 237, .3); outline-offset: 2px; }
+
+/* ── Cards: expanders, metrics, alerts, the live log, diagrams ─────────── */
+[data-testid="stExpander"] details,
+[data-testid="stMetric"],
+.st-key-run_log,
+[data-testid="stChatMessage"] {
+  background: var(--clay-surface);
+  backdrop-filter: blur(20px);
+  border: 0 !important;
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+  transition: transform .3s var(--ease-bounce), box-shadow .3s ease;
+}
+[data-testid="stExpander"] { margin-bottom: .9rem; }
+[data-testid="stExpander"] details:hover,
+[data-testid="stMetric"]:hover { transform: translateY(-4px); box-shadow: var(--shadow-card-hover); }
+[data-testid="stExpander"] summary { padding: 1rem 1.25rem; font-weight: 600; }
+[data-testid="stExpander"] summary:hover { color: var(--clay-violet); }
+[data-testid="stMetric"] { padding: 1.2rem 1.4rem; }
+[data-testid="stMetricLabel"] { color: var(--clay-muted); font-weight: 600; text-transform: uppercase;
+                                 letter-spacing: .08em; font-size: .72rem; }
+[data-testid="stMetricValue"] { font-family: Montserrat, sans-serif; font-weight: 800; color: var(--clay-text); }
+.st-key-run_log { padding: 1.2rem 1.4rem; }
+
+[data-testid="stAlertContainer"] { border: 0; border-radius: var(--r-lg); box-shadow: var(--shadow-soft-button); }
+
+[data-testid="stCustomComponentV1"], [data-testid="stIFrame"] {
+  background: #fff; border-radius: var(--r-xl); box-shadow: var(--shadow-card);
+}
+
+/* ── Recessed surfaces: inputs, uploader, code ─────────────────────────── */
+[data-testid$="InputRootElement"], [data-testid="stTextAreaRootElement"],
+[data-testid="stFileUploaderDropzone"], [data-testid="stChatInput"] {
+  min-height: 3rem;
+  background: var(--clay-recess) !important;
+  border: 0 !important; border-radius: var(--r-md) !important;
+  box-shadow: var(--shadow-pressed);
+  transition: background .2s ease, box-shadow .2s ease;
+}
+[data-testid$="InputRootElement"]:focus-within, [data-testid="stTextAreaRootElement"]:focus-within,
+[data-testid="stChatInput"]:focus-within {
+  background: #fff !important;
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, .2), var(--shadow-soft-button);
+}
+[data-testid$="InputRootElement"] input { background: transparent !important; padding-left: 1rem; }
+[data-testid="stCode"] pre { border-radius: var(--r-md); box-shadow: var(--shadow-pressed); }
+
+/* ── Tabs: a recessed track holding a raised active pill ───────────────── */
+[data-testid="stTabs"] [role="tablist"] {
+  gap: .35rem; padding: .4rem; width: fit-content; max-width: 100%; margin-bottom: 1.2rem;
+  background: var(--clay-recess); border: 0; border-radius: 999px; box-shadow: var(--shadow-pressed);
+}
+[data-testid="stTab"] {
+  height: 2.6rem; padding: 0 1.3rem; border-radius: 999px; font-weight: 600; cursor: pointer;
+  transition: background .2s ease, box-shadow .2s ease, color .2s ease;
+}
+[data-testid="stTab"]:hover { color: var(--clay-violet); }
+[data-testid="stTab"][data-selected="true"] {
+  background: #fff; color: var(--clay-violet); box-shadow: var(--shadow-soft-button);
+}
+[data-testid="stTab"] p { font-weight: 600; }
+[data-testid="stTabs"] .react-aria-SelectionIndicator { display: none; }
+
+/* ── Progress bar: a recessed track with a candy fill ──────────────────── */
+[data-testid="stProgress"] [role="progressbar"] > div {
+  height: .7rem; border-radius: 999px; background: var(--clay-recess); box-shadow: var(--shadow-pressed);
+}
+[data-testid="stProgress"] [role="progressbar"] > div > div > div {
+  border-radius: 999px; background: linear-gradient(90deg, var(--clay-violet-light), var(--clay-violet), var(--clay-pink));
+}
+
+/* ── Result cards: modules, files, stack ───────────────────────────────── */
+[class*="st-key-card_"] {
+  background: var(--clay-surface);
+  backdrop-filter: blur(20px);
+  border: 0 !important;
+  border-radius: var(--r-xl) !important;
+  box-shadow: var(--shadow-card);
+  padding: 1.3rem 1.4rem;
+  scrollbar-width: thin;
+  transition: transform .3s var(--ease-bounce), box-shadow .3s ease;
+}
+[class*="st-key-card_mod_"]:hover, [class*="st-key-card_file_"]:hover {
+  transform: translateY(-4px); box-shadow: var(--shadow-card-hover);
+}
+.st-key-card_stack { margin-bottom: 1.4rem; }
+.ll-card-title {
+  margin: 0 0 .2rem; font-family: Montserrat, sans-serif; font-weight: 700; font-size: 1.05rem;
+  color: var(--clay-text); overflow-wrap: anywhere;
+}
+[class*="st-key-card_"] [data-testid^="stBaseButton-"] { min-height: 2.3rem; padding: 0 1rem; font-size: .85rem; }
+
+/* Details pop-up */
+[role="dialog"] { border-radius: var(--r-xl) !important; box-shadow: var(--shadow-card-hover); }
+
+/* ── Tables ────────────────────────────────────────────────────────────── */
+[data-testid="stTable"] table { border-radius: var(--r-md); overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+  [data-testid^="stBaseButton-"]:hover, [data-testid="stExpander"] details:hover,
+  [data-testid="stMetric"]:hover { transform: none; }
+}

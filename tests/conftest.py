@@ -11,8 +11,11 @@ from agent import llm as llm_mod  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def clean_llm_state(monkeypatch):
-    """Isolate tests from the real .env and from each other."""
+def clean_llm_state(monkeypatch, tmp_path):
+    """Isolate tests from the real .env, the real outputs/ folder and each other."""
+    import importlib
+    diagram_mod = importlib.import_module("agent.nodes.diagram_node.diagram_node")
+    monkeypatch.setattr(diagram_mod, "OUTPUT_DIR", tmp_path / "diagrams")
     for var in ("GEMINI_BASE_URL", "GEMINI_MODEL", "LLM_TIMEOUT", "LLM_MAX_ATTEMPTS",
                 "LLM_RETRY_DELAY", "LLM_RPM", "LANGCHAIN_TRACING_V2", "GEMINI_FALLBACK_MODELS"):
         monkeypatch.delenv(var, raising=False)

@@ -61,6 +61,11 @@ def test_ui_streams_a_local_analysis_and_shows_modules(gemini, monkeypatch, tmp_
         assert name in shown, name
     assert at.session_state["analysis_results"]["modules"]
 
-    # Results tab renders the module from the aggregation node.
-    labels = [e.label for e in at.expander]
-    assert "🧩 inventory-management" in labels
+    # Results tab renders the module from the aggregation node as a card.
+    shown = " ".join(m.value for m in at.markdown)
+    assert "inventory-management" in shown
+    assert "Raw JSON" not in [e.label for e in at.expander]
+
+    # A card's Details button opens the module pop-up without errors.
+    at.button(key="mod_details_0").click().run()
+    assert not at.exception, [e.value for e in at.exception]

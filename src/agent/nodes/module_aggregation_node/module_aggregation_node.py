@@ -19,6 +19,7 @@ Features:
 
 import os
 import json
+import re
 import glob
 from typing import Dict, Any, List
 from datetime import datetime
@@ -47,7 +48,7 @@ class ModuleAggregationNode:
         
         # Initialize LangChain ChatGoogleGenerativeAI
         # One big call over every analysis: long output, long timeout.
-        self.llm = get_llm(temperature=0.1, max_output_tokens=16384, timeout=300, key=api_key)
+        self.llm = get_llm(temperature=0.1, max_output_tokens=16384, timeout=300, key=api_key, json_mode=True)
         self.last_error = None
 
         print(f"🎯 {self.node_name} initialized ({self.llm.model})")
@@ -220,6 +221,7 @@ Return ONLY a JSON response in this EXACT RFP format:
     {{
       "module_name": "descriptive-module-name-kebab-case",
       "module_description": "Clear description of what this module does and its business purpose",
+      "source_files": ["exact file names from the list above that belong to this module"],
       "tech_stack": ["inferred technology stack - Python, FastAPI, PostgreSQL, React, etc."],
       "expected_output": "Detailed description of what this module would produce when implemented",
       "endpoints": [
@@ -315,6 +317,11 @@ Return ONLY the JSON response, no additional text."""
             
             try:
                 return json.loads(generated_text)
+            except json.JSONDecodeError:
+                pass
+            # Models sometimes leave trailing commas: {"a": 1,} or [1, 2,]
+            try:
+                return json.loads(re.sub(r",(\s*[}\]])", r"\1", generated_text))
             except json.JSONDecodeError as e:
                 print(f"❌ JSON parsing error: {e}")
                 print(f"Raw response (first 500 chars): {generated_text[:500]}...")

@@ -1,10 +1,10 @@
 """
-LegacyLens — Streamlit UI
+LegacyLens: Streamlit UI
 Multi-agent legacy system analyser with interactive chat.
 """
 
 import sys
-# ponytail: pipeline code prints emojis; Windows console is CP1252 — force UTF-8 once here
+# ponytail: pipeline code prints emojis; Windows console is CP1252, so force UTF-8 once here
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
@@ -13,7 +13,9 @@ import os
 import streamlit as st
 import sys
 import asyncio
+import html
 import json
+import re
 from pathlib import Path
 from typing import Dict, Any, List
 import tempfile
@@ -34,19 +36,13 @@ except ImportError as e:
 
 st.set_page_config(
     page_title="LegacyLens",
-    page_icon="🔍",
+    page_icon=":material/manage_search:",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-st.markdown("""
-<style>
-    .main-header { font-size: 2.8rem; color: #1f77b4; text-align: center; margin-bottom: 1.5rem; }
-    .node-card { background:#1a1d23; padding:1rem; border-radius:8px; margin:.8rem 0; border-left:4px solid #1f77b4; }
-    .file-item { background:#1a1d23; padding:.5rem; margin:.3rem 0; border-radius:5px; border:1px solid #2e3340; }
-    .github-section { background:#1a1d23; padding:1rem; border-radius:8px; border-left:4px solid #24292e; margin:.8rem 0; }
-</style>
-""", unsafe_allow_html=True)
+# Colours and fonts live in .streamlit/config.toml; shadows and shapes in theme.css.
+st.markdown(f"<style>{(current_dir / 'theme.css').read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
 
 
 # ─── Chat helpers ─────────────────────────────────────────────────────────────
@@ -107,46 +103,43 @@ def chat_with_context(prompt: str, context: str, history: List[Dict]) -> str:
             "timeout": "Gemini took too long to answer. Ask again, or raise LLM_TIMEOUT in .env.",
             "auth": "Gemini rejected the API key. Check GOOGLE_API_KEY in .env.",
         }.get(kind, "The LLM call failed.")
-        return f"⚠️ {hint}\n\n`{type(e).__name__}: {str(e)[:200]}`"
+        return f"**{hint}**\n\n`{type(e).__name__}: {str(e)[:200]}`"
 
 
 # ─── Main UI ──────────────────────────────────────────────────────────────────
 
 def main():
-    st.markdown('<h1 class="main-header">🔍 LegacyLens</h1>', unsafe_allow_html=True)
-    st.caption("Multi-agent legacy system analyser — powered by LangGraph + Gemini")
-    st.markdown("---")
+    st.markdown('<p class="ll-eyebrow">Legacy code analysis</p>', unsafe_allow_html=True)
+    st.title("LegacyLens", anchor=False)
+    st.caption("Reads every file of a COBOL, VB6, Fortran or modern codebase, groups them into "
+               "business modules and draws the architecture.")
 
     with st.sidebar:
-        st.header("⚙️ Configuration")
-
-        google_api_key = os.getenv("GOOGLE_API_KEY")
-        if google_api_key:
-            st.success("✅ GOOGLE_API_KEY set")
-        else:
-            st.error("❌ GOOGLE_API_KEY missing")
-            val = st.text_input("Google API Key:", type="password")
+        # The Gemini key normally comes from .env; only ask for it when it's missing.
+        if not os.getenv("GOOGLE_API_KEY"):
+            st.subheader("Gemini API key", anchor=False)
+            val = st.text_input("Gemini API key", type="password", label_visibility="collapsed",
+                                placeholder="Paste your Gemini API key")
             if val:
                 os.environ["GOOGLE_API_KEY"] = val
+            st.markdown("---")
 
-        st.markdown("---")
-        st.header("🔗 GitHub")
-        github_token = os.getenv("GITHUB_TOKEN")
-        if github_token:
-            st.success("✅ GITHUB_TOKEN set")
-        else:
-            st.info("Optional — for private repos")
-            val = st.text_input("GitHub Token:", type="password")
+        st.subheader("GitHub", anchor=False)
+        env_token = os.getenv("GITHUB_TOKEN")
+        if st.checkbox("Private repository", value=bool(env_token),
+                       help="Only needed for private repos. Public repos work without a token."):
+            val = st.text_input("GitHub token", type="password", label_visibility="collapsed",
+                                placeholder="Token loaded from .env" if env_token else "Paste a GitHub token")
             if val:
                 os.environ["GITHUB_TOKEN"] = val
 
         st.markdown("---")
-        st.header("🔧 Options")
+        st.subheader("Options", anchor=False)
         max_files = st.slider("Max files to analyse", 1, 100, 20)
         include_tests = st.checkbox("Include test files", value=False)
         verbose_mode = st.checkbox("Verbose mode", value=True)
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📁 Analyse", "📊 Results", "📈 Stats", "💬 Chat"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Analyse", "Results", "Statistics", "Chat"])
 
     with tab1:
         analyze_project_tab(max_files, include_tests, verbose_mode)
@@ -161,11 +154,11 @@ def main():
 # ─── Analyse tab ──────────────────────────────────────────────────────────────
 
 def analyze_project_tab(max_files: int, include_tests: bool, verbose_mode: bool):
-    st.header("📁 Select project")
+    st.subheader("Choose a project", anchor=False)
 
     option = st.radio(
         "Input method:",
-        ["📂 Local path", "🔗 GitHub URL", "📦 Upload ZIP"],
+        ["Local path", "GitHub URL", "Upload ZIP"],
         horizontal=True,
     )
 
@@ -173,23 +166,23 @@ def analyze_project_tab(max_files: int, include_tests: bool, verbose_mode: bool)
     github_url = None
     branch = None
 
-    if option == "📂 Local path":
+    if option == "Local path":
         project_path = st.text_input("Project path:", placeholder=r"C:\path\to\project")
         if project_path and os.path.exists(project_path):
-            st.success(f"✅ Found: {project_path}")
+            st.success(f"Found {project_path}", icon=":material/folder_open:")
         elif project_path:
-            st.error("❌ Path not found")
+            st.error("Path not found", icon=":material/close:")
 
-    elif option == "🔗 GitHub URL":
+    elif option == "GitHub URL":
         github_url = st.text_input("GitHub URL:", placeholder="https://github.com/owner/repo")
         if github_url:
             if not github_url.startswith("https://github.com/"):
-                st.error("❌ Must start with https://github.com/")
+                st.error("The URL must start with https://github.com/", icon=":material/close:")
             else:
-                st.success(f"✅ {github_url}")
+                st.success(github_url, icon=":material/check:")
                 branch = st.text_input("Branch (optional):", placeholder="main")
 
-    elif option == "📦 Upload ZIP":
+    elif option == "Upload ZIP":
         uploaded = st.file_uploader("Upload ZIP", type=["zip"])
         if uploaded:
             tmp_dir = tempfile.mkdtemp()
@@ -200,16 +193,16 @@ def analyze_project_tab(max_files: int, include_tests: bool, verbose_mode: bool)
             with zipfile.ZipFile(zip_path, "r") as z:
                 z.extractall(extract_dir)
             project_path = str(extract_dir)
-            st.success(f"✅ Extracted: {uploaded.name}")
+            st.success(f"Extracted {uploaded.name}", icon=":material/check:")
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("🚀 Run analysis", type="primary", width="stretch"):
+        if st.button("Run analysis", type="primary", icon=":material/play_arrow:", width="stretch"):
             if not project_path and not github_url:
-                st.error("❌ Select a project first")
+                st.error("Choose a project first", icon=":material/close:")
                 return
             if not os.getenv("GOOGLE_API_KEY"):
-                st.error("❌ Google API key required")
+                st.error("A Google API key is required", icon=":material/close:")
                 return
             if github_url:
                 run_github_analysis(github_url, branch, max_files, include_tests, verbose_mode)
@@ -218,7 +211,7 @@ def analyze_project_tab(max_files: int, include_tests: bool, verbose_mode: bool)
 
 
 def run_github_analysis(github_url, branch, max_files, include_tests, verbose_mode):
-    st.header("🔄 Analysing GitHub repo…")
+    st.subheader("Analysing repository", anchor=False)
     analyzer = GitHubAnalyzer(os.getenv("GITHUB_TOKEN"))
     try:
         with st.spinner("Cloning repo…"):
@@ -234,7 +227,7 @@ def run_github_analysis(github_url, branch, max_files, include_tests, verbose_mo
         st.session_state.pop("chat_history", None)  # reset chat for new analysis
         display_results(result)
     except Exception as e:
-        st.error(f"❌ {e}")
+        st.error(str(e), icon=":material/error:")
         if verbose_mode:
             st.exception(e)
     finally:
@@ -245,7 +238,7 @@ def run_github_analysis(github_url, branch, max_files, include_tests, verbose_mo
 
 
 def run_analysis(project_path, max_files, include_tests, verbose_mode):
-    st.header("🔄 Analysing…")
+    st.subheader("Analysing", anchor=False)
     result = _run_graph(project_path, max_files, include_tests, verbose_mode)
     if result is None:
         return
@@ -258,7 +251,7 @@ def run_analysis(project_path, max_files, include_tests, verbose_mode):
 def _run_graph(project_path, max_files, include_tests, verbose_mode):
     """Run the pipeline, streaming progress: one line per file as it finishes."""
     progress = st.progress(0, text="Scanning project…")
-    log = st.container(border=True)
+    log = st.container(key="run_log")
     try:
         graph = create_graph()
         initial_state = State(
@@ -298,8 +291,8 @@ def _run_graph(project_path, max_files, include_tests, verbose_mode):
                 for a in done[shown:]:
                     ok = a.get("processing_status") == "completed"
                     n = len(a.get("functionalities") or [])
-                    log.write(f"{'🟢' if ok else '🔴'} {a.get('filename', '?')} "
-                              f"({a.get('language', '?')}) · {n} functionalities")
+                    mark = ":green[:material/check_circle:]" if ok else ":red[:material/error: failed]"
+                    log.write(f"{mark} **{a.get('filename', '?')}** · {a.get('language', '?')} · {n} functionalities")
                 shown = len(done)
                 if total:
                     frac = min(shown / total, 1.0)
@@ -311,11 +304,11 @@ def _run_graph(project_path, max_files, include_tests, verbose_mode):
             return state
 
         result = asyncio.run(stream())
-        progress.progress(1.0, text="✅ Done!")
+        progress.progress(1.0, text="Done")
         return result
     except Exception as e:
         progress.empty()
-        st.error(f"❌ {e}")
+        st.error(str(e), icon=":material/error:")
         if verbose_mode:
             st.exception(e)
         return None
@@ -323,114 +316,240 @@ def _run_graph(project_path, max_files, include_tests, verbose_mode):
 
 # ─── Results display ──────────────────────────────────────────────────────────
 
-def display_results(results: Dict[str, Any]):
-    st.success("✅ Analysis complete!")
+def _clean(text: Any) -> str:
+    """Text safe inside a Markdown badge."""
+    return re.sub(r"[\[\]:]", "", " ".join(str(text).split()))
 
+
+def _badges(items, color: str = "violet", limit: int = 0) -> str:
+    items = [_clean(i) for i in items if str(i).strip()]
+    shown = items[:limit] if limit else items
+    extra = len(items) - len(shown)
+    return " ".join(f":{color}-badge[{i}]" for i in shown) + (f" :gray-badge[+{extra}]" if extra else "")
+
+
+def _short(text: Any, n: int = 140) -> str:
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= n else text[:n].rsplit(" ", 1)[0] + "…"
+
+
+def _card_title(text: str):
+    st.markdown(f'<p class="ll-card-title">{html.escape(str(text))}</p>', unsafe_allow_html=True)
+
+
+def _grid(items: list, render, cols: int = 3):
+    """Lay out cards in rows of `cols`."""
+    for start in range(0, len(items), cols):
+        for col, (i, item) in zip(st.columns(cols), enumerate(items[start:start + cols], start)):
+            with col:
+                render(item, i)
+
+
+def _table(rows: List[Dict[str, Any]]):
+    if rows:
+        st.dataframe(rows, hide_index=True, width="stretch")
+
+
+def overview(results: Dict[str, Any]):
     analyses = results.get("functionality_analyses", [])
-    processed = results.get("processed_files", [])
     ok = sum(1 for a in analyses if a.get("processing_status") == "completed")
-    modules = results.get("modules") or []
-
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Languages", len(results.get("detected_languages", [])))
     col2.metric("Frameworks", len(results.get("detected_frameworks", [])))
     col3.metric("Files analysed", f"{ok}/{len(analyses)}")
-    col4.metric("Modules", len(modules))
+    col4.metric("Modules", len(results.get("modules") or []))
 
-    agg = results.get("aggregation_status", "")
+
+def aggregation_notice(results: Dict[str, Any]):
+    agg = results.get("aggregation_status") or ""
     if agg.startswith("error"):
-        st.warning(f"Module aggregation failed: {agg[len('error: '):]}")
+        st.warning("The files couldn't be grouped into modules this time. Run the analysis again.",
+                   icon=":material/warning:")
+        st.caption(_short(agg[len("error: "):], 200))
     elif agg.startswith("skipped"):
-        st.info("Module aggregation skipped: no file was analysed successfully.")
+        st.info("No module grouping: no file was analysed successfully.", icon=":material/info:")
 
-    errors = {Path(p.get("file_path", "")).name: p.get("message", "")
-              for p in processed if p.get("processing_status") != "completed"}
 
-    if analyses:
-        st.markdown("### 🔍 Per-file analysis")
-        for a in analyses:
-            fname = a.get("filename") or Path(a.get("file_path", "unknown")).name
-            lang = a.get("language", "?")
-            status = a.get("processing_status", "unknown")
-            icon = "🟢" if status == "completed" else "🔴" if status == "error" else "🟡"
-            with st.expander(f"📄 {fname} ({lang}) {icon}"):
-                st.write(f"**Node:** `{a.get('node_type', '?')}`")
-                st.write(f"**Path:** `{a.get('file_path', '?')}`")
-                if status != "completed" and errors.get(fname):
-                    st.error(errors[fname])
-                funcs = a.get("functionalities", [])
+def display_results(results: Dict[str, Any]):
+    """Short summary under the live log; the full view is the Results tab."""
+    st.success("Analysis complete. Open the **Results** tab for modules, diagrams and files, "
+               "or **Chat** to ask questions.", icon=":material/check:")
+    overview(results)
+    aggregation_notice(results)
+
+
+# Modules
+
+def module_details(m: Dict[str, Any]):
+    st.write(m.get("module_description", ""))
+    if m.get("source_files"):
+        st.markdown("**Files**  \n" + _badges(m["source_files"], "blue"))
+    if m.get("tech_stack"):
+        st.markdown("**Tech stack**  \n" + _badges(m["tech_stack"]))
+    if m.get("expected_output"):
+        st.markdown(f"**Expected output**  \n{m['expected_output']}")
+    endpoints = [e for e in m.get("endpoints") or [] if isinstance(e, dict)]
+    if endpoints:
+        st.markdown("**Endpoints**")
+        _table([{"Method": e.get("method", ""), "Path": e.get("path", ""),
+                 "Description": e.get("description", "")} for e in endpoints])
+    entities = {k: v for k, v in (m.get("entities") or {}).items() if isinstance(v, dict)}
+    if entities:
+        st.markdown("**Entities**")
+        names = list(entities)
+        for start in range(0, len(names), 2):
+            for col, ent in zip(st.columns(2), names[start:start + 2]):
+                with col:
+                    st.markdown(f"**{ent}**")
+                    _table([{"Field": k, "Type": str(v)} for k, v in entities[ent].items()])
+
+
+def module_card(m: Dict[str, Any], i: int):
+    name = m.get("module_name", "Module")
+    with st.container(border=True, height=270, key=f"card_mod_{i}"):
+        _card_title(name)
+        st.caption(_short(m.get("module_description")))
+        if m.get("tech_stack"):
+            st.markdown(_badges(m["tech_stack"], limit=3))
+        counts = [f"{len(m.get(k) or [])} {label}" for k, label in
+                  (("source_files", "files"), ("endpoints", "endpoints"), ("entities", "entities"))]
+        st.caption(" · ".join(counts))
+        if st.button("Details", key=f"mod_details_{i}", icon=":material/open_in_full:"):
+            st.dialog(name, width="large")(module_details)(m)
+
+
+# Files
+
+def file_details(a: Dict[str, Any], s: Dict[str, Any], error: str):
+    summary = s.get("file_summary") or {}
+    structure = s.get("structure") or {}
+    arch = s.get("architecture") or {}
+    st.caption(a.get("file_path", ""))
+    if error:
+        st.error(error, icon=":material/error:")
+
+    tabs = {"Overview": True,
+            "Classes": bool(structure.get("classes")),
+            "Functions": bool(structure.get("functions")),
+            "Dependencies": bool(structure.get("dependencies"))}
+    names = [t for t, show in tabs.items() if show]
+    for tab, name in zip(st.tabs(names), names):
+        with tab:
+            if name == "Overview":
+                badges = [x for x in (a.get("language"), summary.get("role"), arch.get("layer")) if x]
+                if badges:
+                    st.markdown(_badges(badges))
+                purpose = s.get("functional_description") or summary.get("purpose")
+                if purpose:
+                    st.write(purpose)
+                if arch.get("responsibilities"):
+                    st.markdown("**Responsibilities**")
+                    st.markdown("\n".join(f"- {r}" for r in arch["responsibilities"]))
+                funcs = a.get("functionalities") or []
                 if funcs:
-                    for i, f in enumerate(funcs, 1):
-                        st.write(f"{i}. {f}")
-                elif status == "completed":
-                    st.warning("No functionalities extracted")
-
-    if modules:
-        st.info("🧩 See the **Results** tab for the generated modules, and **Chat** to ask questions.")
-    else:
-        st.info("💬 Switch to the **Chat** tab to ask questions about this codebase.")
-
-
-def display_modules(modules: List[Dict[str, Any]]):
-    """Modules built by the aggregation node (RFP format)."""
-    for m in modules:
-        name = m.get("module_name", "module")
-        with st.expander(f"🧩 {name}", expanded=False):
-            st.write(m.get("module_description", ""))
-            stack = m.get("tech_stack") or []
-            if stack:
-                st.markdown("**Tech stack:** " + " · ".join(f"`{t}`" for t in stack))
-            if m.get("expected_output"):
-                st.markdown(f"**Expected output:** {m['expected_output']}")
-            endpoints = m.get("endpoints") or []
-            if endpoints:
-                st.markdown("**Endpoints**")
-                st.table([{"Method": e.get("method", ""), "Path": e.get("path", "")}
-                          for e in endpoints if isinstance(e, dict)])
-            entities = m.get("entities") or {}
-            if isinstance(entities, dict) and entities:
-                st.markdown("**Entities**")
-                cols = st.columns(min(3, len(entities)))
-                for i, (ent, fields) in enumerate(entities.items()):
-                    with cols[i % len(cols)]:
-                        st.markdown(f"**{ent}**")
-                        if isinstance(fields, dict):
-                            st.code("\n".join(f"{k}: {v}" for k, v in fields.items()), language="yaml")
-                        else:
-                            st.write(fields)
+                    st.markdown("**Functionalities**")
+                    st.markdown("\n".join(f"{n}. {f}" for n, f in enumerate(funcs, 1)))
+                patterns = structure.get("design_patterns") or []
+                if patterns:
+                    st.markdown("**Design patterns**  \n" + _badges(
+                        p if isinstance(p, str) else p.get("name", p) for p in patterns))
+            elif name == "Classes":
+                _table([{"Name": c.get("name", ""), "Type": c.get("type", ""),
+                         "Methods": len(c.get("methods") or []), "Role": c.get("functionality", "")}
+                        for c in structure["classes"] if isinstance(c, dict)])
+            elif name == "Functions":
+                _table([{"Name": f.get("name", ""), "Role": f.get("functionality", f.get("purpose", ""))}
+                        for f in structure["functions"] if isinstance(f, dict)])
+            else:
+                _table([{"Name": d.get("name", ""), "Type": d.get("type", ""), "Usage": d.get("usage", "")}
+                        if isinstance(d, dict) else {"Name": str(d), "Type": "", "Usage": ""}
+                        for d in structure["dependencies"]])
 
 
-def display_structure(structured: List[Dict[str, Any]]):
-    """Structured per-file architecture from the generic analyser."""
-    for s in structured:
+def file_cards(results: Dict[str, Any]):
+    structured = {s.get("file_path"): s for s in results.get("structured_analyses") or []}
+    errors = {p.get("file_path"): p.get("message", "") for p in results.get("processed_files", [])
+              if p.get("processing_status") != "completed"}
+
+    def card(a: Dict[str, Any], i: int):
+        s = structured.get(a.get("file_path")) or {}
         summary = s.get("file_summary") or {}
-        fname = s.get("filename") or summary.get("file_name", "file")
-        with st.expander(f"🏗️ {fname} — {summary.get('role', '')}"):
-            if summary.get("purpose"):
-                st.write(summary["purpose"])
-            structure = s.get("structure") or {}
-            classes = structure.get("classes") or []
-            if classes:
-                st.markdown("**Classes**")
-                st.table([{
-                    "Name": c.get("name", ""),
-                    "Type": c.get("type", ""),
-                    "Methods": len(c.get("methods") or []),
-                    "Role": c.get("functionality", ""),
-                } for c in classes])
-            functions = structure.get("functions") or []
-            if functions:
-                st.markdown("**Functions**")
-                st.table([{"Name": f.get("name", ""), "Role": f.get("functionality", f.get("purpose", ""))}
-                          for f in functions if isinstance(f, dict)])
-            patterns = structure.get("design_patterns") or []
-            if patterns:
-                st.markdown("**Design patterns:** " + ", ".join(
-                    p if isinstance(p, str) else str(p.get("name", p)) for p in patterns))
-            deps = structure.get("dependencies")
-            if deps:
-                with st.popover("Dependencies"):
-                    st.json(deps)
+        structure = s.get("structure") or {}
+        fname = a.get("filename") or Path(a.get("file_path", "file")).name
+        ok = a.get("processing_status") == "completed"
+        with st.container(border=True, height=250, key=f"card_file_{i}"):
+            _card_title(fname)
+            badges = [_badges([a.get("language", "?")])]
+            if summary.get("role"):
+                badges.append(_badges([summary["role"]], "blue"))
+            if not ok:
+                badges.append(":red-badge[failed]")
+            st.markdown(" ".join(badges))
+            funcs = a.get("functionalities") or []
+            st.caption(_short(summary.get("purpose") or "; ".join(map(str, funcs))
+                              or errors.get(a.get("file_path")) or "No details"))
+            if structure:
+                st.caption(f"{len(structure.get('classes') or [])} classes · "
+                           f"{len(structure.get('functions') or [])} functions")
+            else:
+                st.caption(f"{len(funcs)} functionalities")
+            if st.button("Details", key=f"file_details_{i}", icon=":material/open_in_full:"):
+                st.dialog(fname, width="large")(file_details)(a, s, errors.get(a.get("file_path"), ""))
+
+    _grid(results.get("functionality_analyses", []), card)
+
+
+DIAGRAM_TITLES = {"architecture": "Architecture", "entities": "Data model", "classes": "Classes"}
+MERMAID_JS = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs"
+
+
+def mermaid_html(code: str) -> str:
+    """Standalone page that renders one Mermaid diagram (Streamlit has no native renderer)."""
+    return f"""
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<style>
+  body {{ margin: 0; padding: 12px; }}
+  /* centred when it fits; when wider, starts at the left edge and scrolls (never cut off) */
+  .mermaid svg {{ display: block; margin: 0 auto; }}
+  /* clay: no sharp corners, even inside diagrams */
+  .node rect, .er.entityBox, g.classGroup rect, rect.basic {{ rx: 14px; ry: 14px; }}
+  .cluster rect {{ rx: 24px; ry: 24px; }}
+</style>
+<pre class="mermaid" style="background:transparent">{html.escape(code)}</pre>
+<script type="module">
+  import mermaid from "{MERMAID_JS}";
+  // Same clay palette as .streamlit/config.toml and theme.css
+  mermaid.initialize({{ startOnLoad: false, theme: "base", securityLevel: "strict",
+                       themeVariables: {{ fontFamily: "Inter, sans-serif", fontSize: "14px",
+                         background: "#FFFFFF", primaryColor: "#FFFFFF", primaryTextColor: "#332F3A",
+                         primaryBorderColor: "#C4B5FD", lineColor: "#8B85A0", secondaryColor: "#F4F1FA",
+                         tertiaryColor: "#FAF8FD", clusterBkg: "#F6F2FE", clusterBorder: "#DDD6FE",
+                         titleColor: "#6D28D9", edgeLabelBackground: "#FFFFFF", textColor: "#332F3A",
+                         attributeBackgroundColorOdd: "#FFFFFF", attributeBackgroundColorEven: "#F7F4FC" }},
+                       flowchart: {{ useMaxWidth: false }}, class: {{ useMaxWidth: false }}, er: {{ useMaxWidth: false }} }});
+  // Inactive Streamlit tabs are hidden, and Mermaid fails to draw in a hidden frame.
+  // ponytail: poll until this frame has a size, then draw once.
+  const timer = setInterval(() => {{
+    if (!window.innerWidth || !document.body.clientWidth) return;
+    clearInterval(timer);
+    // Measure labels with Inter, not the fallback font, or text gets clipped in its box.
+    Promise.all([document.fonts.load("14px Inter"), document.fonts.load("600 14px Inter")])
+      .catch(() => {{}}).finally(() => mermaid.run());
+  }}, 300);
+</script>"""
+
+
+def display_diagrams(diagrams: Dict[str, str]):
+    """Mermaid diagrams built by the diagram node, one tab each."""
+    import streamlit.components.v1 as components
+    names = list(diagrams)
+    for tab, name in zip(st.tabs([DIAGRAM_TITLES.get(n, n) for n in names]), names):
+        with tab:
+            components.html(mermaid_html(diagrams[name]), height=520, scrolling=True)
+            with st.expander("Mermaid code"):
+                st.code(diagrams[name], language="text")
+            st.download_button(f"{name}.mmd", icon=":material/download:", data=diagrams[name],
+                               file_name=f"legacylens_{name}.mmd", mime="text/plain", key=f"dl_{name}")
 
 
 # ─── Results tab ──────────────────────────────────────────────────────────────
@@ -441,49 +560,45 @@ def results_tab():
         return
 
     results = st.session_state["analysis_results"]
-    st.header("📊 Detailed results")
-    st.caption(f"Project: {st.session_state.get('project_path', 'N/A')}")
+    head, export = st.columns([4, 1], vertical_alignment="bottom")
+    with head:
+        st.subheader("Results", anchor=False)
+        st.caption(f"Project: {st.session_state.get('project_path', 'N/A')}")
+    with export:
+        st.download_button(
+            "Export JSON", icon=":material/download:", width="stretch",
+            data=json.dumps(results, indent=2, ensure_ascii=False),
+            file_name="legacylens_results.json", mime="application/json",
+        )
 
-    col1, col2 = st.columns([3, 1])
-    with col2:
-        if st.button("💾 Export JSON"):
-            import datetime
-            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            st.download_button(
-                "⬇️ Download",
-                data=json.dumps(results, indent=2, ensure_ascii=False),
-                file_name=f"legacylens_{ts}.json",
-                mime="application/json",
-            )
+    overview(results)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Languages")
-        for l in results.get("detected_languages", []):
-            st.write(f"• {l}")
-    with col2:
-        st.subheader("Frameworks")
-        for f in results.get("detected_frameworks", []):
-            st.write(f"• {f}")
+    with st.container(border=True, key="card_stack"):
+        col1, col2 = st.columns(2)
+        with col1:
+            _card_title("Languages")
+            st.markdown(_badges(results.get("detected_languages", [])) or "None detected")
+        with col2:
+            _card_title("Frameworks")
+            st.markdown(_badges(results.get("detected_frameworks", []), "blue") or "None detected")
 
     modules = results.get("modules") or []
-    st.subheader(f"🧩 Modules ({len(modules)})")
+    st.subheader(f"Modules ({len(modules)})", anchor=False)
     if modules:
         st.caption("Files grouped into functional modules, ready for a modernisation RFP.")
-        display_modules(modules)
-        st.download_button("⬇️ Download modules JSON",
-                           data=json.dumps(modules, indent=2, ensure_ascii=False),
-                           file_name="legacylens_modules.json", mime="application/json")
+        _grid(modules, module_card)
     else:
-        st.info(f"No modules generated ({results.get('aggregation_status') or 'aggregation did not run'}).")
+        aggregation_notice(results)
 
-    structured = results.get("structured_analyses") or []
-    if structured:
-        st.subheader(f"🏗️ File architecture ({len(structured)})")
-        display_structure(structured)
+    diagrams = results.get("diagrams") or {}
+    if diagrams:
+        st.subheader("Diagrams", anchor=False)
+        display_diagrams(diagrams)
 
-    with st.expander("Raw JSON"):
-        st.json(results)
+    analyses = results.get("functionality_analyses", [])
+    if analyses:
+        st.subheader(f"Files ({len(analyses)})", anchor=False)
+        file_cards(results)
 
 
 # ─── Stats tab ────────────────────────────────────────────────────────────────
@@ -494,7 +609,7 @@ def statistics_tab():
         return
 
     results = st.session_state["analysis_results"]
-    st.header("📈 Statistics")
+    st.subheader("Statistics", anchor=False)
 
     processed = results.get("processed_files", [])
     node_counts = {"COBOL": 0, "VB6": 0, "Fortran": 0, "Generic": 0}
@@ -525,7 +640,7 @@ def statistics_tab():
 # ─── Chat tab ─────────────────────────────────────────────────────────────────
 
 def chat_tab():
-    st.header("💬 Chat about this codebase")
+    st.subheader("Ask about this codebase", anchor=False)
 
     if "analysis_results" not in st.session_state:
         st.info("Run an analysis first, then come back here to ask questions.")
@@ -540,7 +655,7 @@ def chat_tab():
             st.markdown(msg["content"])
 
     # Input
-    if user_prompt := st.chat_input("Ask about this codebase — e.g. 'How should we modernise the Fortran code?'"):
+    if user_prompt := st.chat_input("Ask about this codebase, for example: how should we modernise the Fortran code?"):
         st.session_state.chat_history.append({"role": "user", "content": user_prompt})
         with st.chat_message("user"):
             st.markdown(user_prompt)
@@ -554,7 +669,7 @@ def chat_tab():
         st.session_state.chat_history.append({"role": "assistant", "content": reply})
 
     if st.session_state.chat_history:
-        if st.button("🗑️ Clear chat"):
+        if st.button("Clear chat", icon=":material/delete:"):
             st.session_state.chat_history = []
             st.rerun()
 

@@ -83,13 +83,15 @@ def api_key() -> Optional[str]:
 
 
 def get_llm(temperature: float = 0.1, max_output_tokens: Optional[int] = None,
-            timeout: Optional[float] = None, key: Optional[str] = None):
+            timeout: Optional[float] = None, key: Optional[str] = None, json_mode: bool = False):
     """Build a Gemini chat model with timeout, retries and rate limiting."""
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     kwargs: dict[str, Any] = {}
     if max_output_tokens:
         kwargs["max_output_tokens"] = max_output_tokens
+    if json_mode:  # Gemini then only returns valid JSON
+        kwargs["response_mime_type"] = "application/json"
     if os.getenv("GEMINI_BASE_URL"):  # proxy, or the fake server in tests
         kwargs["base_url"] = os.environ["GEMINI_BASE_URL"]
     return ChatGoogleGenerativeAI(

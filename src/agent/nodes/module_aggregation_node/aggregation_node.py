@@ -71,6 +71,12 @@ async def aggregation_node(state, config: RunnableConfig) -> Dict[str, Any]:
         print(f"  Aggregation failed: {e}")
         return {"modules": [], "aggregation_status": f"error: {e}"}
 
+    # Keep only file names we actually analysed (the model may invent some).
+    known = {i["file_name"] for i in inputs}
+    for m in result.get("modules", []):
+        if isinstance(m, dict) and "source_files" in m:
+            m["source_files"] = [f for f in m.get("source_files") or [] if f in known]
+
     return {
         "modules": result.get("modules", []),
         "aggregation_status": result.get("status") if result.get("status") == "aggregated"

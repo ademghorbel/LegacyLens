@@ -1,10 +1,32 @@
 [theme]
-primaryColor = "#1f77b4"
-backgroundColor = "#0e1117"
-secondaryBackgroundColor = "#1a1d23"
-textColor = "#e8eaf0"
-font = "monospace"
+# Clay palette. Shadows, shapes and motion live in streamlit/theme.css.
+base = "light"
+primaryColor = "#7C3AED"            # violet, white text on it is 5.7:1
+backgroundColor = "#F4F1FA"         # lavender canvas, never pure white
+secondaryBackgroundColor = "#EFEBF5"
+textColor = "#332F3A"
+linkColor = "#7C3AED"
+borderColor = "#E4DEEF"
+dataframeBorderColor = "#E4DEEF"
+codeBackgroundColor = "#EFEBF5"
+codeTextColor = "#6D28D9"
+showWidgetBorder = false
+showSidebarBorder = false
+baseRadius = "20px"
+buttonRadius = "20px"
+chartCategoricalColors = ["#7C3AED", "#DB2777", "#0EA5E9", "#10B981", "#F59E0B"]
+
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+headingFont = "Montserrat:https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&display=swap"
+codeFont = "monospace"
+headingFontWeights = [800, 700, 700, 600, 600, 600]
+headingFontSizes = ["2.6rem", "1.5rem", "1.2rem", "1.05rem", "1rem", "0.9rem"]
+baseFontSize = 15
 
 [server]
 headless = true
 port = 8501
+
+[client]
+# Hide Deploy and the developer menu (top right).
+toolbarMode = "minimal"
