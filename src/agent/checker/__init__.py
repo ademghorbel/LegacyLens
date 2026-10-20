@@ -46,7 +46,7 @@ def route_from_checker(state) -> str:
     Priority order: COBOL → VB6 → Fortran → Generic
     """
     if state.processing_complete:
-        return "__end__"
+        return "aggregation_node"
     else:
         # Route to the next processor that has files, in priority order
         if state.files_to_process_with_cobol:
@@ -63,5 +63,5 @@ def route_from_checker(state) -> str:
             return "generic_node"
         else:
             # No files to process, end the pipeline
-            print("  ✅ No more files to process, ending pipeline...")
-            return "__end__"
+            print("  ✅ No more files to process, aggregating modules...")
+            return "aggregation_node"

@@ -4,7 +4,7 @@ import os
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
+from ...llm import ainvoke as llm_ainvoke, get_llm
 from ...graph import State, FunctionalityAnalysis
 
 def setup_llm():
@@ -12,11 +12,7 @@ def setup_llm():
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("GOOGLE_API_KEY environment variable is required")
-    return ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        google_api_key=api_key,
-        temperature=0.1
-    )
+    return get_llm(temperature=0.1, key=api_key)
 
 def create_vb6_analysis_prompt():
     """Create the prompt template for VB6 functionality analysis."""
@@ -107,19 +103,15 @@ async def vb6_node(state: State, config: RunnableConfig) -> Dict[str, Any]:
         file_content = read_file_content(file_path)
         print(f"  📖 Read {len(file_content)} characters from file")
         
-        # Create the analysis chain
-        chain = prompt | llm
-        
         # Analyze functionalities
         print("  🤖 Running LLM analysis...")
-        response = await chain.ainvoke({
-            "file_path": file_path,
-            "filename": filename,
-            "file_content": file_content
-        })
-        
+        messages = prompt.format_messages(
+            file_path=file_path, filename=filename, file_content=file_content
+        )
+        response_text = await llm_ainvoke(llm, messages)
+
         # Parse functionalities from response
-        functionalities = parse_functionalities(response.content)
+        functionalities = parse_functionalities(response_text)
         print(f"  ✨ Extracted {len(functionalities)} functionalities")
         
         # Create functionality analysis result

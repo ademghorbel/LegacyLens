@@ -10,6 +10,22 @@ from .summarizers.tech_summarizer import generate_technical_summary
 from .writers.summary_writer import save_summaries
 from .utils import extract_file_info, print_log, clean_llm_output
 
+def _summary_lines(summary: str, limit: int = 3):
+    """Plain sentences from a markdown summary, minus LLM filler ('Here is...')."""
+    import re
+    lines = []
+    for raw in (summary or "").splitlines():
+        line = re.sub(r"[*_`#>]+", "", raw).strip(" -	")
+        if not line or line.startswith("---") or line.lower().startswith(("here is", "here's", "summary")):
+            continue
+        if len(line) < 25 and line.endswith(":") or re.match(r"^\d+\.\s*[A-Z][\w ]{0,30}$", line):
+            continue  # headings like "1. General Purpose"
+        lines.append(line[:220])
+        if len(lines) == limit:
+            break
+    return lines
+
+
 async def fortran_node(state: State, config: RunnableConfig) -> Dict[str, Any]:
     """Full Fortran Node Processing: parsing → extracting → summarizing → saving."""
     print("🟢 Hey, my name is FORTRAN_NODE!")
@@ -60,12 +76,20 @@ async def fortran_node(state: State, config: RunnableConfig) -> Dict[str, Any]:
         )
         print(f"  💾 Summaries saved at: {saved_paths}")
 
+        # Strings, like every other node; the detailed dicts stay in processed_file_info.
+        # A main program with no subroutines yields nothing, so fall back to its summary.
+        functionality_lines = [
+            f.get("description") or f"{f.get('type', '')} {f.get('name', '')}".strip()
+            if isinstance(f, dict) else str(f)
+            for f in functionalities.get("functionalities", [])
+        ] or _summary_lines(human_summary)
+
         # Create FunctionalityAnalysis entry
         functionality_analysis: FunctionalityAnalysis = {
             "file_path": file_path,
             "filename": filename,
             "language": language,
-            "functionalities": functionalities.get("functionalities", []),
+            "functionalities": functionality_lines,
             "processing_status": "completed",
             "node_type": "fortran_node"
         }

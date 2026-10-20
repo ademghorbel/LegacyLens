@@ -1,4 +1,4 @@
-"""Orchestrator node avec Gemini 2.5 Flash pour l'analyse de projets."""
+"""Orchestrator node: routes files by extension, detects frameworks with one LLM call."""
 
 import os
 from pathlib import Path
@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..graph import State
@@ -33,7 +32,7 @@ def scan_project_files(project_path: str) -> List[str]:
     
     # Common source file extensions
     source_extensions = {
-        '.py', '.java', '.cpp', '.c', '.cs', '.js', '.ts', '.php', '.rb', '.go', '.rs',
+        '.py', '.java', '.cpp', '.c', '.cs', '.js', '.ts', '.jsx', '.tsx', '.php', '.rb', '.go', '.rs',
         '.cob', '.cbl', '.cpy',  # COBOL
         '.vb', '.bas', '.frm', '.cls',  # VB6
         '.f', '.for', '.f90', '.f95'  # Fortran
@@ -42,7 +41,8 @@ def scan_project_files(project_path: str) -> List[str]:
     try:
         for root, dirs, files in os.walk(project_path):
             # Skip common non-source directories
-            dirs[:] = [d for d in dirs if d not in {'.git', '__pycache__', 'node_modules', '.vscode', 'target', 'build', 'dist'}]
+            dirs[:] = [d for d in dirs if d not in {'.git', '__pycache__', 'node_modules', '.vscode', 'target', 'build', 'dist',
+                                                    '.venv', 'venv', '.idea', '.pytest_cache', '.mypy_cache'}]
             
             for file in files:
                 file_ext = Path(file).suffix.lower()
@@ -54,6 +54,31 @@ def scan_project_files(project_path: str) -> List[str]:
     except Exception as e:
         print(f"Error scanning directory: {e}")
         return []
+
+
+LEGACY_EXTENSIONS = {'.cob', '.cbl', '.cpy', '.vb', '.bas', '.frm', '.cls', '.f', '.for', '.f90', '.f95'}
+
+
+def is_test_file(file_path: str) -> bool:
+    p = Path(file_path)
+    name = p.name.lower()
+    parts = {part.lower() for part in p.parts[:-1]}
+    return (bool(parts & {'test', 'tests', '__tests__', 'spec', 'specs'})
+            or name.startswith('test_') or p.stem.lower().endswith(('_test', '.test', '.spec'))
+            or name == 'conftest.py')
+
+
+def select_files(files: List[str], max_files: int | None = None, include_tests: bool = False) -> List[str]:
+    """Drop test files (unless asked) and cap the count, keeping legacy files first.
+
+    Every selected file costs at least one LLM call, so the cap is what keeps a big
+    repo inside the free-tier quota.
+    """
+    chosen = [f for f in files if include_tests or not is_test_file(f)]
+    chosen.sort(key=lambda f: (Path(f).suffix.lower() not in LEGACY_EXTENSIONS, f.lower()))
+    if max_files and max_files > 0:
+        chosen = chosen[:max_files]
+    return chosen
 
 
 @tool
@@ -86,7 +111,7 @@ async def orchestrator_node(state: State, config: RunnableConfig) -> Dict[str, A
         État mis à jour avec l'analyse et le routage des fichiers
     """
     print("🔴 Hey, my name is ORCHESTRATOR_NODE!")
-    print("🚀 Starting intelligent project analysis with Gemini 2.5 Flash...")
+    print("🚀 Starting project analysis...")
     
     project_path = state.project_path or config.get("configurable", {}).get("project_path", "")
     
@@ -102,27 +127,20 @@ async def orchestrator_node(state: State, config: RunnableConfig) -> Dict[str, A
     
     print(f"📁 Analyzing project at: {project_path}")
     
-    # Initialize Gemini 2.5 Flash
-    try:
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            temperature=0.1,
-            google_api_key=os.getenv("GOOGLE_API_KEY")
-        )
-        print("✅ Gemini 2.5 Flash initialized successfully")
-    except Exception as e:
-        print(f"❌ Error initializing Gemini: {e}")
-        return {
-            "analysis_complete": False,
-            "files_to_process_with_cobol": [],
-            "files_to_process_with_vb6": [],
-            "files_to_process_with_fortran": [],
-            "files_to_process_with_generic": [],
-        }
-    
+    from ..llm import ainvoke as llm_ainvoke, get_llm, reset_quota
+    import json
+    import re
+
+    reset_quota()  # quotas reset daily; give each run a fresh chance
+
     # Scan project files
     source_files = scan_project_files.invoke({"project_path": project_path})
-    
+    opts = config.get("configurable", {}) if config else {}
+    found = len(source_files)
+    source_files = select_files(source_files, opts.get("max_files"), bool(opts.get("include_tests", False)))
+    if len(source_files) < found:
+        print(f"✂️ Kept {len(source_files)} of {found} files (max_files / test filter)")
+
     if not source_files:
         print("📭 No source files found in the project")
         return {
@@ -132,145 +150,51 @@ async def orchestrator_node(state: State, config: RunnableConfig) -> Dict[str, A
             "files_to_process_with_fortran": [],
             "files_to_process_with_generic": [],
         }
-    
+
     print(f"📄 Found {len(source_files)} source files to analyze")
-    
-    # Initialize file queues
-    files_cobol = []
-    files_vb6 = []
-    files_fortran = []
-    files_generic = []
+
+    # Route by extension. The scanner only returns known extensions, so this is
+    # exact and free; the LLM is kept for what extensions can't tell (frameworks).
+    files_cobol, files_vb6, files_fortran, files_generic = [], [], [], []
+    queues = {"cobol_node": files_cobol, "vb6_node": files_vb6, "fortran_node": files_fortran}
     detected_languages = set()
-    detected_frameworks = set()
-    
-    # System message for the LLM
-    system_message = SystemMessage(content="""
-Tu es un expert en analyse de code source et détection de langages de programmation.
-Ton rôle est d'analyser chaque fichier source et de déterminer:
+    snippets = []
 
-1. **Langage de programmation** (COBOL, VB6, Fortran, Python, Java, C++, C#, JavaScript, etc.)
-2. **Framework utilisé** (Django, Flask, Spring, React, Angular, etc.) si identifiable
-3. **Routing décision**: Vers quel nœud de traitement envoyer ce fichier:
-   - `cobol_node` pour les fichiers COBOL (.cob, .cbl, .cpy)
-   - `vb6_node` pour les fichiers VB6 (.vb, .bas, .frm, .cls)
-   - `fortran_node` pour les fichiers Fortran (.f, .for, .f90, .f95)
-   - `generic_node` pour tous les autres langages modernes
-
-Réponds TOUJOURS au format JSON suivant:
-{
-    "language": "nom_du_langage",
-    "framework": "nom_du_framework_ou_null",
-    "target_node": "nom_du_noeud",
-    "confidence": "high|medium|low"
-}
-""")
-    
-    # Process each file with the LLM
-    for i, file_path in enumerate(source_files):
+    for file_path in source_files:
         filename = Path(file_path).name
         file_ext = Path(file_path).suffix.lower()
-        
-        print(f"🔍 Analyzing file {i+1}/{len(source_files)}: {filename}")
-        
-        # Read file content
-        file_content = read_file_content.invoke({"file_path": file_path, "max_chars": 1500})
-        
-        # Prepare analysis prompt
-        analysis_prompt = f"""
-Analyse ce fichier source:
+        fb = fallback_analysis(file_path, file_ext)
+        detected_languages.add(fb["language"])
+        file_info = {
+            "file_path": file_path,
+            "filename": filename,
+            "language": fb["language"],
+            "framework": None,
+            "target_node": fb["target_node"],
+        }
+        queues.get(fb["target_node"], files_generic).append(file_info)
+        print(f"  📄 {filename} → {fb['target_node'].upper()} ({fb['language']})")
+        if len(snippets) < 25:
+            head = read_file_content.invoke({"file_path": file_path, "max_chars": 400})
+            snippets.append(f"### {filename}\n{head}")
 
-**Nom du fichier**: {filename}
-**Extension**: {file_ext}
-**Chemin**: {file_path}
+    # One LLM call for the whole project: which frameworks are in use?
+    detected_frameworks = set()
+    try:
+        llm = get_llm(temperature=0.1, timeout=90)
+        prompt = (
+            "These are the first lines of each source file in a project.\n"
+            "List the frameworks and major libraries in use (e.g. Django, Spring, React, "
+            "CICS, MFC). Reply with JSON only: {\"frameworks\": [\"...\"]}\n\n"
+            + "\n\n".join(snippets)
+        )
+        reply = await llm_ainvoke(llm, [HumanMessage(content=prompt)])
+        match = re.search(r"\{.*\}", reply, re.DOTALL)
+        if match:
+            detected_frameworks.update(json.loads(match.group()).get("frameworks", []))
+    except Exception as e:
+        print(f"  [warn] framework detection skipped: {type(e).__name__}: {str(e)[:150]}")
 
-**Contenu du fichier**:
-```
-{file_content}
-```
-
-Détermine le langage, le framework (si applicable) et le nœud de traitement approprié.
-"""
-        
-        try:
-            # Invoke LLM
-            messages = [system_message, HumanMessage(content=analysis_prompt)]
-            response = await llm.ainvoke(messages)
-            
-            # Parse LLM response (basic JSON extraction)
-            response_text = response.content.strip()
-            
-            # Try to extract JSON from response
-            import json
-            import re
-            
-            # Look for JSON in the response
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if json_match:
-                try:
-                    analysis_result = json.loads(json_match.group())
-                except:
-                    # Fallback to extension-based detection
-                    analysis_result = fallback_analysis(file_path, file_ext)
-            else:
-                analysis_result = fallback_analysis(file_path, file_ext)
-            
-            # Extract information
-            language = analysis_result.get("language", "unknown")
-            framework = analysis_result.get("framework", None)
-            target_node = analysis_result.get("target_node", "generic_node")
-            
-            detected_languages.add(language)
-            if framework:
-                detected_frameworks.add(framework)
-            
-            # Create file info dict
-            file_info = {
-                "file_path": file_path,
-                "filename": filename,
-                "language": language,
-                "framework": framework,
-                "target_node": target_node,
-                "analysis_result": analysis_result
-            }
-            
-            # Route to appropriate queue
-            if target_node == "cobol_node":
-                files_cobol.append(file_info)
-                print(f"  📄 {filename} → COBOL_NODE ({language})")
-            elif target_node == "vb6_node":
-                files_vb6.append(file_info)
-                print(f"  📄 {filename} → VB6_NODE ({language})")
-            elif target_node == "fortran_node":
-                files_fortran.append(file_info)
-                print(f"  📄 {filename} → FORTRAN_NODE ({language})")
-            else:
-                files_generic.append(file_info)
-                print(f"  📄 {filename} → GENERIC_NODE ({language})")
-                
-        except Exception as e:
-            print(f"  [warn] LLM failed for {filename}, using extension fallback: {e}")
-            # ponytail: extension-based routing already exists — use it instead of dumping to generic
-            fb = fallback_analysis(file_path, file_ext)
-            language = fb["language"]
-            target_node = fb["target_node"]
-            detected_languages.add(language)
-            file_info = {
-                "file_path": file_path,
-                "filename": filename,
-                "language": language,
-                "framework": None,
-                "target_node": target_node,
-                "error": str(e)
-            }
-            if target_node == "cobol_node":
-                files_cobol.append(file_info)
-            elif target_node == "vb6_node":
-                files_vb6.append(file_info)
-            elif target_node == "fortran_node":
-                files_fortran.append(file_info)
-            else:
-                files_generic.append(file_info)
-    
     # Summary
     print(f"\n📊 Analysis Summary:")
     print(f"  🌐 Detected languages: {list(detected_languages)}")
@@ -314,6 +238,8 @@ def fallback_analysis(file_path: str, file_ext: str) -> Dict[str, Any]:
         '.cs': ('csharp', 'generic_node'),
         '.js': ('javascript', 'generic_node'),
         '.ts': ('typescript', 'generic_node'),
+        '.jsx': ('javascript', 'generic_node'),
+        '.tsx': ('typescript', 'generic_node'),
     }
     
     language, target_node = ext_mapping.get(file_ext, ('unknown', 'generic_node'))
