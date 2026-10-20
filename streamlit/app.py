@@ -204,7 +204,7 @@ def analyze_project_tab(max_files: int, include_tests: bool, verbose_mode: bool)
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("🚀 Run analysis", type="primary", use_container_width=True):
+        if st.button("🚀 Run analysis", type="primary", width="stretch"):
             if not project_path and not github_url:
                 st.error("❌ Select a project first")
                 return
@@ -219,42 +219,47 @@ def analyze_project_tab(max_files: int, include_tests: bool, verbose_mode: bool)
 
 def run_github_analysis(github_url, branch, max_files, include_tests, verbose_mode):
     st.header("🔄 Analysing GitHub repo…")
-    progress = st.progress(0)
-    status = st.empty()
+    analyzer = GitHubAnalyzer(os.getenv("GITHUB_TOKEN"))
     try:
-        status.text("Cloning repo…")
-        progress.progress(10)
-        analyzer = GitHubAnalyzer(os.getenv("GITHUB_TOKEN"))
-        progress.progress(20)
-        result = asyncio.run(analyzer.analyze_github_repository(
-            github_url=github_url, branch=branch,
-            max_files=max_files, include_tests=include_tests, verbose_mode=verbose_mode,
-        ))
-        progress.progress(90)
+        with st.spinner("Cloning repo…"):
+            repo_path = analyzer.cloner.clone_repository(github_url, branch or None)
+        st.caption(f"Cloned to `{repo_path}`")
+        result = _run_graph(repo_path, max_files, include_tests, verbose_mode)
+        if result is None:
+            return
+        result["github_metadata"] = {"github_url": github_url, "branch": branch, "cloned_path": repo_path}
         st.session_state["analysis_results"] = result
         st.session_state["project_path"] = f"GitHub: {github_url}"
-        st.session_state["github_metadata"] = result.get("github_metadata", {})
+        st.session_state["github_metadata"] = result["github_metadata"]
         st.session_state.pop("chat_history", None)  # reset chat for new analysis
-        progress.progress(100)
-        status.text("✅ Done!")
-        try:
-            analyzer.cleanup()
-        except Exception:
-            pass
         display_results(result)
     except Exception as e:
         st.error(f"❌ {e}")
         if verbose_mode:
             st.exception(e)
+    finally:
+        try:
+            analyzer.cleanup()
+        except Exception:
+            pass
 
 
 def run_analysis(project_path, max_files, include_tests, verbose_mode):
     st.header("🔄 Analysing…")
-    progress = st.progress(0)
-    status = st.empty()
+    result = _run_graph(project_path, max_files, include_tests, verbose_mode)
+    if result is None:
+        return
+    st.session_state["analysis_results"] = result
+    st.session_state["project_path"] = project_path
+    st.session_state.pop("chat_history", None)
+    display_results(result)
+
+
+def _run_graph(project_path, max_files, include_tests, verbose_mode):
+    """Run the pipeline, streaming progress: one line per file as it finishes."""
+    progress = st.progress(0, text="Scanning project…")
+    log = st.container(border=True)
     try:
-        status.text("Initialising graph…")
-        progress.progress(10)
         graph = create_graph()
         initial_state = State(
             project_path=project_path,
@@ -270,26 +275,50 @@ def run_analysis(project_path, max_files, include_tests, verbose_mode):
             fortran_results=[],
             generic_results=[],
             functionality_analyses=[],
+            structured_analyses=[],
         )
-        config = {"configurable": {
+        # Each file takes a few graph steps (node + checker), so the default limit of 25 is too low.
+        config = {"recursion_limit": 500, "configurable": {
             "project_path": project_path,
             "max_files": max_files,
             "include_tests": include_tests,
             "verbose": verbose_mode,
         }}
-        progress.progress(20)
-        status.text("Running agents…")
-        result = asyncio.run(graph.ainvoke(initial_state, config))
-        st.session_state["analysis_results"] = result
-        st.session_state["project_path"] = project_path
-        st.session_state.pop("chat_history", None)
-        progress.progress(100)
-        status.text("✅ Done!")
-        display_results(result)
+
+        async def stream():
+            state, total, shown, aggregating = {}, None, 0, False
+            async for state in graph.astream(initial_state, config, stream_mode="values"):
+                if total is None and state.get("analysis_complete"):
+                    total = sum(len(state.get(k) or []) for k in (
+                        "files_to_process_with_cobol", "files_to_process_with_vb6",
+                        "files_to_process_with_fortran", "files_to_process_with_generic"))
+                    langs = ", ".join(state.get("detected_languages") or []) or "none"
+                    log.markdown(f"**{total} files** to analyse · languages: {langs}")
+                done = state.get("functionality_analyses") or []
+                for a in done[shown:]:
+                    ok = a.get("processing_status") == "completed"
+                    n = len(a.get("functionalities") or [])
+                    log.write(f"{'🟢' if ok else '🔴'} {a.get('filename', '?')} "
+                              f"({a.get('language', '?')}) · {n} functionalities")
+                shown = len(done)
+                if total:
+                    frac = min(shown / total, 1.0)
+                    if shown >= total and not aggregating:
+                        aggregating = True
+                        progress.progress(0.95, text="Grouping files into modules…")
+                    elif not aggregating:
+                        progress.progress(0.05 + 0.85 * frac, text=f"Analysing files… {shown}/{total}")
+            return state
+
+        result = asyncio.run(stream())
+        progress.progress(1.0, text="✅ Done!")
+        return result
     except Exception as e:
+        progress.empty()
         st.error(f"❌ {e}")
         if verbose_mode:
             st.exception(e)
+        return None
 
 
 # ─── Results display ──────────────────────────────────────────────────────────
@@ -297,15 +326,28 @@ def run_analysis(project_path, max_files, include_tests, verbose_mode):
 def display_results(results: Dict[str, Any]):
     st.success("✅ Analysis complete!")
 
+    analyses = results.get("functionality_analyses", [])
+    processed = results.get("processed_files", [])
+    ok = sum(1 for a in analyses if a.get("processing_status") == "completed")
+    modules = results.get("modules") or []
+
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Languages", len(results.get("detected_languages", [])))
     col2.metric("Frameworks", len(results.get("detected_frameworks", [])))
-    col3.metric("Files processed", len(results.get("processed_files", [])))
-    col4.metric("Functionalities", len(results.get("functionality_analyses", [])))
+    col3.metric("Files analysed", f"{ok}/{len(analyses)}")
+    col4.metric("Modules", len(modules))
 
-    analyses = results.get("functionality_analyses", [])
+    agg = results.get("aggregation_status", "")
+    if agg.startswith("error"):
+        st.warning(f"Module aggregation failed: {agg[len('error: '):]}")
+    elif agg.startswith("skipped"):
+        st.info("Module aggregation skipped: no file was analysed successfully.")
+
+    errors = {Path(p.get("file_path", "")).name: p.get("message", "")
+              for p in processed if p.get("processing_status") != "completed"}
+
     if analyses:
-        st.markdown("### 🔍 Functionality analyses")
+        st.markdown("### 🔍 Per-file analysis")
         for a in analyses:
             fname = a.get("filename") or Path(a.get("file_path", "unknown")).name
             lang = a.get("language", "?")
@@ -314,14 +356,81 @@ def display_results(results: Dict[str, Any]):
             with st.expander(f"📄 {fname} ({lang}) {icon}"):
                 st.write(f"**Node:** `{a.get('node_type', '?')}`")
                 st.write(f"**Path:** `{a.get('file_path', '?')}`")
+                if status != "completed" and errors.get(fname):
+                    st.error(errors[fname])
                 funcs = a.get("functionalities", [])
                 if funcs:
                     for i, f in enumerate(funcs, 1):
                         st.write(f"{i}. {f}")
-                else:
+                elif status == "completed":
                     st.warning("No functionalities extracted")
 
-    st.info("💬 Switch to the **Chat** tab to ask questions about this codebase.")
+    if modules:
+        st.info("🧩 See the **Results** tab for the generated modules, and **Chat** to ask questions.")
+    else:
+        st.info("💬 Switch to the **Chat** tab to ask questions about this codebase.")
+
+
+def display_modules(modules: List[Dict[str, Any]]):
+    """Modules built by the aggregation node (RFP format)."""
+    for m in modules:
+        name = m.get("module_name", "module")
+        with st.expander(f"🧩 {name}", expanded=False):
+            st.write(m.get("module_description", ""))
+            stack = m.get("tech_stack") or []
+            if stack:
+                st.markdown("**Tech stack:** " + " · ".join(f"`{t}`" for t in stack))
+            if m.get("expected_output"):
+                st.markdown(f"**Expected output:** {m['expected_output']}")
+            endpoints = m.get("endpoints") or []
+            if endpoints:
+                st.markdown("**Endpoints**")
+                st.table([{"Method": e.get("method", ""), "Path": e.get("path", "")}
+                          for e in endpoints if isinstance(e, dict)])
+            entities = m.get("entities") or {}
+            if isinstance(entities, dict) and entities:
+                st.markdown("**Entities**")
+                cols = st.columns(min(3, len(entities)))
+                for i, (ent, fields) in enumerate(entities.items()):
+                    with cols[i % len(cols)]:
+                        st.markdown(f"**{ent}**")
+                        if isinstance(fields, dict):
+                            st.code("\n".join(f"{k}: {v}" for k, v in fields.items()), language="yaml")
+                        else:
+                            st.write(fields)
+
+
+def display_structure(structured: List[Dict[str, Any]]):
+    """Structured per-file architecture from the generic analyser."""
+    for s in structured:
+        summary = s.get("file_summary") or {}
+        fname = s.get("filename") or summary.get("file_name", "file")
+        with st.expander(f"🏗️ {fname} — {summary.get('role', '')}"):
+            if summary.get("purpose"):
+                st.write(summary["purpose"])
+            structure = s.get("structure") or {}
+            classes = structure.get("classes") or []
+            if classes:
+                st.markdown("**Classes**")
+                st.table([{
+                    "Name": c.get("name", ""),
+                    "Type": c.get("type", ""),
+                    "Methods": len(c.get("methods") or []),
+                    "Role": c.get("functionality", ""),
+                } for c in classes])
+            functions = structure.get("functions") or []
+            if functions:
+                st.markdown("**Functions**")
+                st.table([{"Name": f.get("name", ""), "Role": f.get("functionality", f.get("purpose", ""))}
+                          for f in functions if isinstance(f, dict)])
+            patterns = structure.get("design_patterns") or []
+            if patterns:
+                st.markdown("**Design patterns:** " + ", ".join(
+                    p if isinstance(p, str) else str(p.get("name", p)) for p in patterns))
+            deps = structure.get("dependencies")
+            if deps:
+                with st.popover("Dependencies"):
+                    st.json(deps)
 
 
 # ─── Results tab ──────────────────────────────────────────────────────────────
@@ -357,6 +466,22 @@ def results_tab():
         for f in results.get("detected_frameworks", []):
             st.write(f"• {f}")
 
+    modules = results.get("modules") or []
+    st.subheader(f"🧩 Modules ({len(modules)})")
+    if modules:
+        st.caption("Files grouped into functional modules, ready for a modernisation RFP.")
+        display_modules(modules)
+        st.download_button("⬇️ Download modules JSON",
+                           data=json.dumps(modules, indent=2, ensure_ascii=False),
+                           file_name="legacylens_modules.json", mime="application/json")
+    else:
+        st.info(f"No modules generated ({results.get('aggregation_status') or 'aggregation did not run'}).")
+
+    structured = results.get("structured_analyses") or []
+    if structured:
+        st.subheader(f"🏗️ File architecture ({len(structured)})")
+        display_structure(structured)
+
     with st.expander("Raw JSON"):
         st.json(results)
 
@@ -388,7 +513,7 @@ def statistics_tab():
                 import plotly.express as px
                 fig = px.pie(df[df["Files"] > 0], values="Files", names="Node",
                              title="File distribution by node")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
             except ImportError:
                 pass
     except ImportError:

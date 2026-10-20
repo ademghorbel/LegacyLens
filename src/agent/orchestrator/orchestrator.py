@@ -41,7 +41,8 @@ def scan_project_files(project_path: str) -> List[str]:
     try:
         for root, dirs, files in os.walk(project_path):
             # Skip common non-source directories
-            dirs[:] = [d for d in dirs if d not in {'.git', '__pycache__', 'node_modules', '.vscode', 'target', 'build', 'dist'}]
+            dirs[:] = [d for d in dirs if d not in {'.git', '__pycache__', 'node_modules', '.vscode', 'target', 'build', 'dist',
+                                                    '.venv', 'venv', '.idea', '.pytest_cache', '.mypy_cache'}]
             
             for file in files:
                 file_ext = Path(file).suffix.lower()
@@ -53,6 +54,31 @@ def scan_project_files(project_path: str) -> List[str]:
     except Exception as e:
         print(f"Error scanning directory: {e}")
         return []
+
+
+LEGACY_EXTENSIONS = {'.cob', '.cbl', '.cpy', '.vb', '.bas', '.frm', '.cls', '.f', '.for', '.f90', '.f95'}
+
+
+def is_test_file(file_path: str) -> bool:
+    p = Path(file_path)
+    name = p.name.lower()
+    parts = {part.lower() for part in p.parts[:-1]}
+    return (bool(parts & {'test', 'tests', '__tests__', 'spec', 'specs'})
+            or name.startswith('test_') or p.stem.lower().endswith(('_test', '.test', '.spec'))
+            or name == 'conftest.py')
+
+
+def select_files(files: List[str], max_files: int | None = None, include_tests: bool = False) -> List[str]:
+    """Drop test files (unless asked) and cap the count, keeping legacy files first.
+
+    Every selected file costs at least one LLM call, so the cap is what keeps a big
+    repo inside the free-tier quota.
+    """
+    chosen = [f for f in files if include_tests or not is_test_file(f)]
+    chosen.sort(key=lambda f: (Path(f).suffix.lower() not in LEGACY_EXTENSIONS, f.lower()))
+    if max_files and max_files > 0:
+        chosen = chosen[:max_files]
+    return chosen
 
 
 @tool
@@ -109,6 +135,11 @@ async def orchestrator_node(state: State, config: RunnableConfig) -> Dict[str, A
 
     # Scan project files
     source_files = scan_project_files.invoke({"project_path": project_path})
+    opts = config.get("configurable", {}) if config else {}
+    found = len(source_files)
+    source_files = select_files(source_files, opts.get("max_files"), bool(opts.get("include_tests", False)))
+    if len(source_files) < found:
+        print(f"✂️ Kept {len(source_files)} of {found} files (max_files / test filter)")
 
     if not source_files:
         print("📭 No source files found in the project")

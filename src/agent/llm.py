@@ -18,12 +18,16 @@ from __future__ import annotations
 
 import os
 import threading
+import warnings
 from typing import Any, Optional
 
 from langchain_core.rate_limiters import InMemoryRateLimiter
 
 DEFAULT_MODEL = "gemini-3.5-flash"
 DEFAULT_FALLBACKS = "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
+
+# Lite models ignore temperature and warn on every call; the warning is noise.
+warnings.filterwarnings("ignore", message=".*uses fixed sampling defaults.*")
 
 
 class QuotaExhaustedError(RuntimeError):

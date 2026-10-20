@@ -111,6 +111,7 @@ class GitHubAnalyzer:
         
         # Configuration
         config = {
+            "recursion_limit": 500,  # node + checker steps per file; default 25 is too low
             "configurable": {
                 "project_path": project_path,
                 "max_files": max_files,
