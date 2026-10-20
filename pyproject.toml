@@ -1,12 +1,12 @@
 [project]
 name = "legacylens"
 version = "0.1.0"
-description = "Legacy system modernisation tool — multi-agent AI pipeline with LangGraph + chat interface"
+description = "Legacy system modernisation tool: multi-agent AI pipeline with LangGraph + chat interface"
 authors = [
     {name = "Mohamed Adam Ghorbel", email = "mohamedadam.ghorbel@enetcom.u-sfax.tn"}
 ]
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "Proprietary" }
 requires-python = ">=3.9"
 dependencies = [
     "langchain>=0.1.0",

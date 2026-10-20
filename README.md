@@ -1,16 +1,18 @@
 # LegacyLens
 
-> Multi-agent AI pipeline for legacy system modernisation — powered by LangGraph, LangChain, and Gemini.
+> Multi-agent AI pipeline for legacy system modernisation, built with LangGraph, LangChain and Gemini.
 
 Analyses COBOL, VB6, Fortran, and modern codebases. Produces functionality breakdowns, architecture diagrams, and an interactive chat to ask "how do we modernise this?"
 
 ## Features
 
-- **Multi-agent pipeline** — orchestrator routes files to specialised nodes (COBOL / VB6 / Fortran / Generic)
-- **GitHub-native** — paste a repo URL and get instant analysis
-- **Interactive chat** — ask questions about the codebase after analysis
-- **FastAPI** — REST endpoints for `/analyse` and `/chat`
-- **Streamlit UI** — 4-tab interface with dark theme
+- **Multi-agent pipeline:** an orchestrator routes files to specialised nodes (COBOL, VB6, Fortran, generic)
+- **Business modules:** every file analysis is grouped into modules with tech stack, endpoints and entities (RFP format)
+- **Diagrams:** Mermaid architecture, data model and class diagrams built from the analysis, with no extra LLM call
+- **GitHub-native:** paste a repo URL and get the analysis
+- **Interactive chat:** ask questions about the codebase after analysis
+- **FastAPI:** REST endpoints for `/analyse` and `/chat`
+- **Streamlit UI:** live per-file progress, results as module and file cards with a details view, foldable sidebar
 
 ## Quickstart
 
@@ -50,6 +52,9 @@ Input (local path / GitHub URL)
        Module aggregation → groups all analyses into business modules
               │             (tech stack, endpoints, entities; RFP format)
               ▼
+       Diagram node → Mermaid architecture, data model and class diagrams
+              │
+              ▼
        Results + Chat (ask about the analysis)
 ```
 
@@ -70,7 +75,7 @@ Every LLM call goes through `src/agent/llm.py`:
 |-------|------|
 | Orchestration | LangGraph |
 | LLM | Google Gemini (3.5 Flash, Flash-Lite fallbacks), via LangChain |
-| UI | Streamlit |
+| UI | Streamlit (custom theme in `streamlit/theme.css`), Mermaid |
 | API | FastAPI |
 | GitHub | GitPython |
 
@@ -91,7 +96,7 @@ Every LLM call goes through `src/agent/llm.py`:
 | `LLM_RETRY_DELAY` | Optional | First backoff in seconds (default 4) |
 | `LLM_RPM` | Optional | Requests per minute across all nodes (default 8) |
 
-Copy `.env.example` to `.env` and fill in your own keys — never commit `.env`.
+Copy `.env.example` to `.env` and fill in your own keys. Never commit `.env`.
 
 ## Project structure
 
@@ -99,9 +104,10 @@ Copy `.env.example` to `.env` and fill in your own keys — never commit `.env`.
 .
 ├── api/main.py              # FastAPI app (/analyse, /chat, /health)
 ├── streamlit/app.py         # Streamlit UI entrypoint
-├── src/agent/               # LangGraph pipeline: orchestrator, language nodes, checker, aggregation
+├── streamlit/theme.css      # UI theme: cards, shadows, motion
+├── src/agent/               # LangGraph pipeline: orchestrator, language nodes, checker, aggregation, diagrams
 ├── src/agent/llm.py         # Shared Gemini client: timeouts, retries, rate limit, quota fallback
-├── src/agents/               # Standalone agent helpers (language identifier)
+├── src/agents/              # Standalone agent helpers (language identifier)
 ├── src/github_integration/  # Clone + analyse a GitHub repo by URL
 ├── examples/demo_project/   # Small VB6 / Fortran / Python sample
 ├── examples/ecommerce_project/  # Larger Python + React sample for the structured analyser
@@ -139,7 +145,7 @@ Ask a question about a previous `/analyse` result.
 Returns `{"reply": "..."}` from Gemini, grounded in the analysis context.
 
 ### `GET /health`
-Liveness check — returns `{"status": "ok"}`.
+Liveness check, returns `{"status": "ok"}`.
 
 ## Try it on the bundled example
 
@@ -156,10 +162,16 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-The suite runs offline: a local fake Gemini server (`tests/fake_gemini.py`) stands in for the API, so the real google-genai SDK retry, backoff and timeout code is exercised without a key or quota. It covers retries, backoff timing, timeouts (sync and async), the daily-quota fallback chain, rate limiting, full pipeline runs on both example projects, partial failures, and the API error codes.
+The suite runs offline: a local fake Gemini server (`tests/fake_gemini.py`) stands in for the API, so the real google-genai SDK retry, backoff and timeout code is exercised without a key or quota. It covers retries, backoff timing, timeouts (sync and async), the daily-quota fallback chain, rate limiting, full pipeline runs on both example projects, partial failures, the API error codes, the diagram builder and the Streamlit UI (55 tests).
 
 To run the real pipeline with your key: `python scripts/run_pipeline.py examples/ecommerce_project`.
 
+## Credits
+
+LegacyLens started as a team project during a summer 2025 AI engineering internship at Talan Tunisia, where each member built different agents (language nodes, LLM-as-judge review, chat, agent-to-agent communication, code extraction). My part was the structured code analyser and the module aggregation agent, plus shared work on agent-to-agent (A2A) communication. This repository continues the project on my own: reliability layer, diagrams, UI and tests.
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Copyright (c) 2026 Mohamed Adam Ghorbel. All rights reserved.
+
+The code is public to read, but no license is granted to use, copy, modify or distribute it. Contact me for permission.
